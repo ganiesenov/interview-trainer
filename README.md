@@ -45,12 +45,63 @@ interview_trainer/
 │   ├── llm.py             # обёртка над Ollama
 │   └── store.py           # SQLite: сессии, слабые места          (v1)
 ├── banks/
-│   ├── theory.yaml        # вопросы по матчасти
-│   └── sysdesign.yaml     # кейсы system design                   (v1)
+│   └── bank_full.json     # банк вопросов: 139 карточек, 9 направлений
+├── cards/
+│   └── interview_cards.html  # флеш-карточки (один файл, работает с телефона)
+├── tools/
+│   └── gen_bank.py        # доращивание банка моделью + дедуп по эмбеддингам
 ├── tests/                 # юнит-тесты чистых частей
 ├── run.py                 # точка входа CLI
 └── data/sessions.db                                               # (v1)
 ```
+
+## Банк
+
+`banks/bank_full.json` — 139 вопросов: LLM (58), Классический ML (17),
+Статистика (17), Computer Vision (11), NLP (10), Основы DL (9), MLOps (7),
+Системный дизайн (5), HR-скрининг (5). У каждого — 5 `points` и связный `ref`.
+
+Формат карточки:
+
+```json
+{"id": "kv", "track": "LLM", "topic": "Инференс",
+ "q": "Зачем нужен KV-cache и что он ломает при батчинге?",
+ "points": ["...", "...", "...", "...", "..."],
+ "ref": "Связный эталонный ответ на 4-5 предложений."}
+```
+
+Загрузчик понимает и YAML-банки с длинными именами полей
+(`question` / `key_points` / `reference`) — имена взаимозаменяемы в обоих форматах.
+
+Три вещи едят один и тот же файл: `run.py` (тренажёр), `cards/interview_cards.html`
+(карточки, банк вшит внутрь) и `tools/gen_bank.py` (генерация и дедуп).
+
+### Доращивание банка
+
+```bash
+ollama pull bge-m3
+pip install numpy
+
+python tools/gen_bank.py --stats
+python tools/gen_bank.py --track "Статистика" --topic "A/B-тесты" --n 15
+python tools/gen_bank.py --track "Computer Vision" --auto
+python tools/gen_bank.py --dedup-only
+python tools/gen_bank.py --inject cards/interview_cards.html   # обновить карточки
+```
+
+Дедуп по косинусу эмбеддингов с порогом 0.86 — генератор регулярно выдаёт один
+и тот же вопрос двумя формулировками. Отсев 50–70% сгенерированного — норма.
+
+После `--dedup-only` или генерации прогони `--inject`, иначе карточки разъедутся
+с банком (это ловит `tests/test_cards_sync.py`).
+
+## Карточки
+
+`cards/interview_cards.html` — самодостаточная страница для быстрого повторения:
+вопрос → самооценка («знаю уверенно / примерно представляю / не знаю») → пункты
+и эталон, прогресс в localStorage. Открывается двойным кликом, интернет не нужен
+(кроме шрифтов). Это повторение, а не тренажёр: произносить ответ вслух
+заставляет `run.py`.
 
 ## Режимы
 
@@ -72,11 +123,13 @@ ollama pull qwen2.5:32b-instruct-q4_K_M
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python run.py                       # случайный вопрос из banks/theory.yaml
-python run.py --list                # что вообще есть в банке
-python run.py --id kv_cache_01      # конкретный вопрос
-python run.py --topic inference     # случайный вопрос по теме
-python run.py --model qwen3:32b     # другая модель
+python run.py                        # случайный вопрос из banks/bank_full.json
+python run.py --track LLM            # только по направлению
+python run.py --track LLM --topic RAG
+python run.py --id kv                # конкретный вопрос
+python run.py --stats                # покрытие банка по направлениям и темам
+python run.py --list --track MLOps   # что вообще есть в банке
+python run.py --model qwen3:32b      # другая модель
 ```
 
 Ответ вводится в несколько строк, пустая строка — конец ответа.
@@ -84,8 +137,11 @@ python run.py --model qwen3:32b     # другая модель
 Переменные окружения: `INTERVIEW_MODEL` (модель по умолчанию),
 `OLLAMA_HOST` (по умолчанию `http://127.0.0.1:11434`).
 
+`--track` и `--topic` нечувствительны к регистру и понимают префикс
+(`--track llm`).
+
 Тесты (чистые части — парсинг JSON, сопоставление пунктов, подсчёт балла,
-загрузка банка): `pytest`.
+загрузка банка, синхронность карточек с банком): `pytest`.
 
 ## Как считается оценка
 

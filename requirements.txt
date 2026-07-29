@@ -2,5 +2,8 @@ ollama>=0.3
 pyyaml>=6.0
 rich>=13.7
 
+# tools/gen_bank.py
+numpy>=1.26
+
 # dev
 pytest>=8.0
