@@ -1,7 +1,7 @@
-"""The flashcards page carries an inlined copy of the bank.
+"""The flashcards page carries an inlined copy of the bank and of the lessons.
 
-`tools/gen_bank.py --inject cards/interview_cards.html` refreshes it; this test
-catches the copy silently drifting from banks/bank_full.json.
+`python tools/build_cards.py` refreshes both; this test catches the copies
+silently drifting from banks/bank_full.json and banks/lessons.json.
 """
 
 import json
@@ -11,19 +11,40 @@ from pathlib import Path
 import pytest
 
 BANK = Path("banks/bank_full.json")
+LESSONS = Path("banks/lessons.json")
 CARDS = Path("cards/interview_cards.html")
 
 
-def inlined_cards() -> list[dict]:
+def inlined(name: str) -> list[dict]:
     html = CARDS.read_text(encoding="utf-8")
-    match = re.search(r"const CARDS = (\[.*?\]);", html, re.DOTALL)
+    match = re.search(rf"const {name} = (\[.*?\]);", html, re.DOTALL)
     if not match:
-        pytest.fail("const CARDS block not found in cards/interview_cards.html")
+        pytest.fail(f"const {name} block not found in cards/interview_cards.html")
     return json.loads(match.group(1))
 
 
 def test_cards_html_matches_the_bank():
     bank = json.loads(BANK.read_text(encoding="utf-8"))
-    cards = inlined_cards()
+    cards = inlined("CARDS")
     assert [card["id"] for card in cards] == [card["id"] for card in bank]
     assert [card["q"] for card in cards] == [card["q"] for card in bank]
+
+
+def test_cards_html_matches_the_lessons():
+    assert inlined("LESSONS") == json.loads(LESSONS.read_text(encoding="utf-8"))
+
+
+def test_lessons_are_well_formed_and_point_at_real_cards():
+    lessons = json.loads(LESSONS.read_text(encoding="utf-8"))
+    known = {card["id"] for card in json.loads(BANK.read_text(encoding="utf-8"))}
+
+    seen_ids = set()
+    for lesson in lessons:
+        for field in ("id", "title", "track", "cards", "body"):
+            assert lesson.get(field), f"{lesson.get('id')}: missing {field}"
+        assert lesson["id"] not in seen_ids, f"duplicate lesson id {lesson['id']}"
+        seen_ids.add(lesson["id"])
+
+        missing = [card for card in lesson["cards"] if card not in known]
+        assert not missing, f"{lesson['id']} points at unknown cards: {missing}"
+        assert len(lesson["body"].split()) > 200, f"{lesson['id']}: lesson body is too thin"
