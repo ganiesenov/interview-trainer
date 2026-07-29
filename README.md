@@ -103,6 +103,12 @@ python tools/gen_bank.py --inject cards/interview_cards.html   # обновит�
 (кроме шрифтов). Это повторение, а не тренажёр: произносить ответ вслух
 заставляет `run.py`.
 
+**С телефона:** страница публикуется на GitHub Pages —
+https://ganiesenov.github.io/interview-trainer/ . Деплой автоматический
+(`.github/workflows/pages.yml`) при каждом пуше в `cards/`. Чтобы это заработало
+в первый раз, один раз включи Pages: Settings → Pages → Source: **GitHub Actions**.
+Прогресс хранится в localStorage браузера, то есть на телефоне он свой.
+
 ## Режимы
 
 Квиз и мок-интервью — один движок, разница только в `max_followups`:
