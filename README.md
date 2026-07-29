@@ -45,7 +45,7 @@ interview_trainer/
 │   ├── llm.py             # обёртка над Ollama
 │   └── store.py           # SQLite: сессии, слабые места          (v1)
 ├── banks/
-│   └── bank_full.json     # банк вопросов: 139 карточек, 9 направлений
+│   └── bank_full.json     # банк вопросов: 242 карточки, 9 направлений
 ├── cards/
 │   └── interview_cards.html  # флеш-карточки (один файл, работает с телефона)
 ├── tools/
@@ -57,9 +57,9 @@ interview_trainer/
 
 ## Банк
 
-`banks/bank_full.json` — 139 вопросов: LLM (58), Классический ML (17),
-Статистика (17), Computer Vision (11), NLP (10), Основы DL (9), MLOps (7),
-Системный дизайн (5), HR-скрининг (5). У каждого — 5 `points` и связный `ref`.
+`banks/bank_full.json` — 242 вопроса: LLM (68), Классический ML (33),
+Статистика (31), Computer Vision (23), Основы DL (21), MLOps (19), NLP (18),
+Системный дизайн (15), HR-скрининг (14). У каждого — 5 `points` и связный `ref`.
 
 Формат карточки:
 
