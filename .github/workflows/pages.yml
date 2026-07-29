@@ -34,7 +34,10 @@ jobs:
           mkdir -p site
           cp cards/interview_cards.html site/index.html
 
+      # enablement: true включает Pages сам, если он ещё не включён в настройках
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
