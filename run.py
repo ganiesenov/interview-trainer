@@ -77,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
                 role=args.role,
                 profile=profile,
                 use_mine=not args.bank_ref,
+                ask_mine=args.ask_mine,
             )
         except LLMError as exc:
             console.print(f"\n[bold red]Модель недоступна:[/] {exc}")
@@ -106,6 +107,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--stats", action="store_true", help="покрытие банка по направлениям и темам")
     parser.add_argument("--mine", metavar="ID", help="записать или переписать свой эталон для вопроса")
     parser.add_argument("--list-mine", action="store_true", help="показать вопросы со своим эталоном")
+    parser.add_argument(
+        "--ask-mine",
+        action="store_true",
+        help="предлагать записать свой эталон после каждого разбора (по умолчанию не спрашивает)",
+    )
     parser.add_argument(
         "--bank-ref",
         action="store_true",
@@ -154,6 +160,7 @@ def run_quiz(
     role: str,
     profile: str,
     use_mine: bool = True,
+    ask_mine: bool = False,
 ) -> None:
     entries = mine.load() if use_mine else {}
     graded_against, is_mine = mine.apply_to(question, entries)
@@ -188,7 +195,8 @@ def run_quiz(
         result = grade(graded_against, answer, model=model)
 
     render_grade(question, result, is_mine=is_mine)
-    maybe_save_mine(question, enabled=use_mine, already=is_mine)
+    if ask_mine:
+        maybe_save_mine(question, already=is_mine)
 
 
 def read_answer() -> str:
@@ -252,9 +260,9 @@ def render_grade(question: Question, result: Grade, *, is_mine: bool = False) ->
     console.print()
 
 
-def maybe_save_mine(question: Question, *, enabled: bool, already: bool) -> None:
-    """Offer to record your own wording of the key points right after the breakdown."""
-    if not enabled or not sys.stdin.isatty():
+def maybe_save_mine(question: Question, *, already: bool) -> None:
+    """Offer to record your own wording of the key points. Opt-in via --ask-mine."""
+    if not sys.stdin.isatty():
         return
     prompt = "Переписать свой эталон?" if already else "Записать свой эталон для этого вопроса?"
     if not ask_yes_no(prompt, default_yes=False):
