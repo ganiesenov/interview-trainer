@@ -36,8 +36,8 @@ class Interviewer:
     def followups_left(self) -> int:
         return max(0, self.max_followups - self._asked_followups)
 
-    def followup(self) -> str | None:
-        """Next probing question, or None once the budget is spent (always None in v0)."""
+    def followup(self, gaps: list[str] | None = None) -> str | None:
+        """Next probing question aimed at uncovered points, or None once the budget is spent."""
         if self.followups_left == 0:
             return None
 
@@ -56,6 +56,7 @@ class Interviewer:
                     topic=self.question.topic or "—",
                     question=self.question.question,
                     key_points=prompts.numbered(self.question.key_points),
+                    gaps=prompts.numbered(gaps or []),
                     transcript=prompts.render_transcript(self.transcript),
                 ),
             },

@@ -172,6 +172,11 @@ def _as_list(value) -> list:
     return [value]
 
 
+def gaps(result: Grade) -> list[str]:
+    """Points the candidate has not fully covered — targets for follow-up questions."""
+    return [point.point for point in result.points if point.status != COVERED]
+
+
 def score_points(points: list[PointResult]) -> int:
     """covered = 1, partial = 0.5, missed = 0 → share of the bank, mapped to 1-10."""
     if not points:
