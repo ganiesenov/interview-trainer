@@ -53,3 +53,26 @@ def test_lessons_are_well_formed_and_point_at_real_cards():
         assert 2 <= len(lesson["tldr"]) <= 4, f"{lesson['id']}: tldr should be 2-4 bullets"
         assert lesson["sources"], f"{lesson['id']}: no sources"
         assert lesson["minutes"] >= 3, f"{lesson['id']}: implausible reading time"
+
+
+def test_deep_breakdowns_match_answers_and_bank():
+    """The inlined DEEP object mirrors docs/answers/*.md and points at real cards."""
+    import sys
+
+    sys.path.insert(0, "tools")
+    from build_cards import load_deep
+
+    html = CARDS.read_text(encoding="utf-8")
+    match = re.search(r"const DEEP = (\{.*\});", html)
+    assert match, "const DEEP line not found in cards/interview_cards.html"
+    inlined_deep = json.loads(match.group(1))
+
+    source_deep = load_deep()
+    assert inlined_deep == source_deep, "DEEP drifted from docs/answers — run tools/build_cards.py"
+
+    known = {card["id"] for card in json.loads(BANK.read_text(encoding="utf-8"))}
+    unknown = sorted(set(source_deep) - known)
+    assert not unknown, f"breakdowns for unknown cards: {unknown}"
+    # every breakdown keeps the four-block format
+    for card_id, body in source_deep.items():
+        assert "**30 секунд.**" in body and "**Ловят на этом:**" in body, card_id
