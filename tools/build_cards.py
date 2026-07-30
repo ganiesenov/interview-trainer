@@ -50,6 +50,10 @@ def main() -> None:
     html = replace_block(html, "LESSONS", lessons, 1)
     CARDS.write_text(html, encoding="utf-8")
 
+    missing_meta = [l["id"] for l in lessons if not (l.get("tldr") and l.get("sources") and l.get("minutes"))]
+    if missing_meta:
+        sys.exit(f"у уроков нет tldr/sources/minutes: {missing_meta}")
+
     covered = {i for lesson in lessons for i in lesson["cards"]}
     print(
         f"вшито: {len(bank)} карточек, {len(lessons)} урок(ов); "
