@@ -294,18 +294,57 @@ body{
 .fab:hover{color:var(--accent);border-color:var(--accent)}
 .kbdhint{font-size:11px;color:var(--muted);margin:14px 0 0;text-align:center;font-family:"IBM Plex Mono",monospace;letter-spacing:.04em}
 @media(pointer:coarse){.kbdhint{display:none}}
+
+/* --- usage round: font size, daily goal, settings popover --- */
+html[data-fs="lg"] .lesson{font-size:17px}
+html[data-fs="lg"] .pt .txt{font-size:16px;line-height:1.5}
+html[data-fs="lg"] .q{font-size:25px}
+html[data-fs="lg"] .refbox{font-size:15.5px}
+html[data-fs="xl"] .lesson{font-size:18.5px;line-height:1.72}
+html[data-fs="xl"] .pt .txt{font-size:17.5px;line-height:1.55}
+html[data-fs="xl"] .q{font-size:27px}
+html[data-fs="xl"] .refbox{font-size:17px}
+#goalPill{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.02em;white-space:nowrap}
+#goalPill[data-done="1"]{color:var(--ok);border-color:var(--ok)}
+.topctl{position:relative}
+.setpop{position:absolute;right:0;top:calc(100% + 8px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;width:230px;box-shadow:0 10px 30px rgba(0,0,0,.16);text-align:left}
+.setpop.hidden{display:none}
+.sph{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.seg{display:flex;gap:6px}
+.seg button{flex:1;font-family:inherit;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:9px;padding:7px 0;cursor:pointer}
+.seg button[data-on="1"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.setpop select{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink)}
+.spnote{font-size:12px;color:var(--muted);margin:12px 0 0;line-height:1.5}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
     <div class="brand">Карточки · LLM/NLP</div>
-    <div style="display:flex;align-items:center;gap:10px">
+    <div class="topctl" style="display:flex;align-items:center;gap:10px">
       <div class="counter" id="counter"></div>
+      <button class="tabbtn" id="goalPill" title="Цель на день и настройки" aria-label="Настройки"></button>
       <button class="tabbtn" id="themeBtn" title="Тема" aria-label="Переключить тему">◐</button>
       <button class="tabbtn" id="theoryBtn">Теория</button>
       <button class="tabbtn" id="codeBtn">Код</button>
       <button class="tabbtn" id="tabBtn">Разбор</button>
+      <div class="setpop hidden" id="setPop">
+        <div class="sph">Размер текста</div>
+        <div class="seg" id="fsSeg">
+          <button data-fs="" style="font-size:13px">Аа</button>
+          <button data-fs="lg" style="font-size:15px">Аа</button>
+          <button data-fs="xl" style="font-size:17px">Аа</button>
+        </div>
+        <div class="sph" style="margin:14px 0 8px">Цель на день</div>
+        <select id="goalSel">
+          <option value="10">10 карточек</option>
+          <option value="20">20 карточек</option>
+          <option value="30">30 карточек</option>
+          <option value="50">50 карточек</option>
+          <option value="100">100 карточек</option>
+        </select>
+        <div class="spnote" id="streakNote"></div>
+      </div>
     </div>
   </div>
   <div class="rail"><i id="rail"></i></div>
@@ -10073,6 +10112,35 @@ let activeLesson=null;   // урок, по которому идёт тест
 let codeTask=null;       // открытая задача код-тренажёра
 const LESSON_OF={};      // карточка -> первый урок, который её разбирает
 LESSONS.forEach(l=>l.cards.forEach(c=>{if(!LESSON_OF[c])LESSON_OF[c]=l.id;}));
+const FSKEY="aria_fs", GOALKEY="aria_goal", DAYSKEY="aria_days";
+function fsApply(){
+  let v=""; try{v=localStorage.getItem(FSKEY)||""}catch(e){}
+  if(v) document.documentElement.dataset.fs=v; else delete document.documentElement.dataset.fs;
+  document.querySelectorAll("#fsSeg button").forEach(b=>b.dataset.on=b.dataset.fs===v?1:0);
+}
+function goalGet(){let g=0; try{g=+localStorage.getItem(GOALKEY)}catch(e){} return g||20}
+function daysGet(){try{return JSON.parse(localStorage.getItem(DAYSKEY))||{}}catch(e){return {}}}
+function dayKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function bumpToday(){
+  const d=daysGet(), k=dayKey(new Date());
+  d[k]=(d[k]||0)+1;
+  try{localStorage.setItem(DAYSKEY,JSON.stringify(d))}catch(e){}
+  updateGoalPill();
+}
+function streakLen(){
+  const d=daysGet(); let n=0; const day=new Date();
+  if(!d[dayKey(day)]) day.setDate(day.getDate()-1);   // сегодня ещё не занимался — серия висит на вчера
+  while(d[dayKey(day)]){n++; day.setDate(day.getDate()-1);}
+  return n;
+}
+function updateGoalPill(){
+  const p=document.getElementById("goalPill"); if(!p) return;
+  const today=daysGet()[dayKey(new Date())]||0, g=goalGet(), s=streakLen();
+  p.dataset.done=today>=g?1:0;
+  p.textContent=(s>1?"🔥"+s+" · ":"")+today+"/"+g;
+  const note=document.getElementById("streakNote");
+  if(note) note.textContent=(s?"🔥 Серия: "+s+" дн. подряд. ":"")+"Сегодня отвечено: "+today+" карт."+(today>=g?" Цель закрыта ✓":"");
+}
 const CDKEY="codetasks_v1";
 function readCodeDone(){try{return JSON.parse(localStorage.getItem(CDKEY))||{}}catch(e){return {}}}
 function toggleCodeDone(id){try{const d=readCodeDone();if(d[id])delete d[id];else d[id]=Date.now();localStorage.setItem(CDKEY,JSON.stringify(d))}catch(e){}}
@@ -10511,6 +10579,7 @@ function bind(){
     const nb=actual>=.8?Math.min(b+1,4):(actual>=.5?b:0);
     hist[cur.id]={seen:(prev?.seen||0)+1,actual,exp,gap:exp-actual,box:nb,t:Date.now()};
     session.push({id:cur.id,track:cur.track,actual,gap:exp-actual});
+    bumpToday();
     await save(hist);
     if(exam){
       exam.log.push({id:cur.id,track:cur.track,q:cur.q,actual});
@@ -10630,6 +10699,21 @@ window.addEventListener("scroll",()=>{
   }
 },{passive:true});
 if(fabBtn) fabBtn.onclick=()=>window.scrollTo({top:0,behavior:"smooth"});
+
+const setPop=document.getElementById("setPop"), goalPill=document.getElementById("goalPill");
+if(goalPill) goalPill.onclick=e=>{e.stopPropagation(); setPop.classList.toggle("hidden");};
+if(setPop){
+  setPop.onclick=e=>e.stopPropagation();
+  document.addEventListener("click",()=>setPop.classList.add("hidden"));
+  document.querySelectorAll("#fsSeg button").forEach(b=>b.onclick=()=>{
+    try{ b.dataset.fs?localStorage.setItem(FSKEY,b.dataset.fs):localStorage.removeItem(FSKEY) }catch(e){}
+    fsApply();
+  });
+  const gs=document.getElementById("goalSel");
+  gs.value=String(goalGet());
+  gs.onchange=()=>{try{localStorage.setItem(GOALKEY,gs.value)}catch(e){} updateGoalPill();};
+}
+fsApply(); updateGoalPill();
 
 (async()=>{hist=await load()||{};buildQueue();render();try{history.replaceState({tab,reading:null},"")}catch(e){}})();
 </script>
