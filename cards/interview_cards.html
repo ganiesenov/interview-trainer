@@ -420,6 +420,13 @@ html[data-fs="xl"] .q{font-size:29px}
 .shopt[data-cur="1"]{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent);font-weight:600}
 .shopt .tick{width:16px;flex:0 0 auto;color:var(--accent);font-size:13px}
 .shopt .cnt{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);white-space:nowrap}
+
+/* --- dogfood round: intro card --- */
+.intro{background:color-mix(in srgb,var(--accent) 6%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line));border-radius:16px;padding:16px 16px 14px;margin-bottom:12px}
+.intro>b{display:block;margin-bottom:8px;font-size:15px}
+.intro ol{margin:0 0 12px;padding-left:20px;font-size:14px;line-height:1.55}
+.intro li{margin-bottom:5px}
+.intro button{width:auto;margin:0;padding:8px 16px}
 </style>
 </head>
 <body>
@@ -10329,7 +10336,7 @@ function render(){
     rail.style.width=(exam.log.length/exam.total*100)+"%";
     counter.textContent="экзамен · "+exam.log.length+" / "+exam.total;
   } else {
-    rail.style.width=(seen/Math.max(p.length,1)*100)+"%";
+    rail.style.width=(tab==="deck"?seen/Math.max(p.length,1)*100:0)+"%";
     counter.textContent=(nDue?nDue+" к повторению · ":"")+seen+" / "+p.length;
   }
   const eb=document.getElementById("examBtn");
@@ -10351,7 +10358,10 @@ function deck(){
   if(!cur) cur=queue[0];
   if(phase==="examdone") return examCard();
   if(phase==="session" && !exam) return sessionCard();
-  if(!cur) return `<div class="card"><p class="empty">Карточки кончились. Открой разбор — там видно, где самооценка расходится с делом.</p></div>`;
+  if(!cur) return qterm
+    ? `<div class="card"><p class="empty">Ничего не найдено по «${esc(qterm)}». Поиск идёт по вопросам, пунктам и темам.</p>
+       <button class="ghost" id="clearSearch">Сбросить поиск</button></div>`
+    : `<div class="card"><p class="empty">Карточки кончились. Открой разбор — там видно, где самооценка расходится с делом.</p></div>`;
   const h0=hist[cur.id];
   const badge=h0?`повтор · ступень ${Math.min(boxOf(h0),4)+1}/5`:"новая";
   const head=`<div class="card${phase==="result"?" result":""}">
@@ -10359,7 +10369,15 @@ function deck(){
     <h1 class="q">${esc(cur.q)}</h1>`;
 
   if(phase==="ask"){
-    return head+`<p class="hint">Ответь про себя вслух целиком, и только потом оценивай — иначе замер не сработает.</p>
+    let intro="";
+    try{ if(!localStorage.getItem("aria_intro")&&!Object.keys(hist).length)
+      intro=`<div class="intro"><b>Как работает тренажёр</b><ol>
+        <li>Прочитай вопрос и <b>ответь вслух</b>, как на интервью.</li>
+        <li>Отметь, какие пункты эталона реально прозвучали, — честно.</li>
+        <li>Карточки возвращаются по кривой забывания: слабые — завтра, освоенные — через недели.</li>
+      </ol><button class="ghost" id="introOk">Понятно</button></div>`;
+    }catch(e){}
+    return intro+head+`<p class="hint">Ответь про себя вслух целиком, и только потом оценивай — иначе замер не сработает.</p>
       <div class="conf"><div class="lab">Насколько уверен</div>
         ${Object.entries(CONF).map(([k,v])=>`<button class="cbtn" data-conf="${k}">${v.label}<span class="k">${v.k}</span></button>`).join("")}
       </div>${exam?"":`<button class="ghost" id="skip">Пропустить — спрошу позже</button>`}<p class="kbdhint">клавиши: 1 · 2 · 3 — самооценка, 0 — пропустить, Enter — дальше</p></div>`;
@@ -10594,6 +10612,7 @@ function lessonView(l){
     <div class="eyebrow">${esc(l.track)}<span class="dot"></span>${CARDS.filter(c=>set.has(c.id)).length} карточек${l.minutes?`<span class="dot"></span>${l.minutes} мин чтения`:""}</div>
     <h1 class="q" style="font-size:24px">${esc(l.title)}</h1>
     ${tldr}
+    <button class="ghost" id="startTestTop" style="margin:14px 0 4px">⚡ Сразу к тесту по уроку (${l.cards.length} карт.)</button>
     ${(()=>{const hs=(l.body.match(/^## .+$/gm)||[]).map(s=>s.slice(3));
       return hs.length>=3?`<div class="toc"><b>В этом уроке</b><ol>${hs.map((t,i)=>`<li><button data-toc="${i}">${inline(esc(t))}</button></li>`).join("")}</ol></div>`:"";})()}
     <div class="lesson">${md(l.body)}</div>
@@ -10679,6 +10698,15 @@ function bind(){
     try{localStorage.setItem("lessons_last",l.id)}catch(e){}
     render(); window.scrollTo(0,0); pushNav();
   };
+  const cs=document.getElementById("clearSearch"); if(cs) cs.onclick=()=>{
+    qterm=""; const qi=document.getElementById("qSearch"); if(qi) qi.value="";
+    buildQueue(); cur=null; phase="ask"; render();
+  };
+  const io=document.getElementById("introOk"); if(io) io.onclick=()=>{
+    try{localStorage.setItem("aria_intro","1")}catch(e){}
+    render();
+  };
+  const stt=document.getElementById("startTestTop"); if(stt) stt.onclick=()=>document.getElementById("startTest")?.click();
   const st=document.getElementById("startTest"); if(st) st.onclick=()=>{
     activeLesson=reading; markDone(reading.id); reading=null; tab="deck";
     buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
@@ -10903,6 +10931,9 @@ if(setPop){
   gs.onchange=()=>{try{localStorage.setItem(GOALKEY,gs.value)}catch(e){} updateGoalPill();};
 }
 fsApply(); updateGoalPill();
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  navigator.serviceWorker.register("sw.js").catch(e=>{});
+}
 const shb=document.getElementById("sheetBack");
 if(shb) shb.onclick=e=>{if(e.target===shb) shb.classList.add("hidden");};
 

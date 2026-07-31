@@ -33,7 +33,7 @@ jobs:
         run: |
           mkdir -p site
           cp cards/interview_cards.html site/index.html
-          cp cards/manifest.webmanifest cards/icon-192.png cards/icon-512.png site/
+          cp cards/manifest.webmanifest cards/icon-192.png cards/icon-512.png cards/sw.js site/
 
       # enablement: true включает Pages сам, если он ещё не включён в настройках
       - uses: actions/configure-pages@v5
