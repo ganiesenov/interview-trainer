@@ -265,6 +265,27 @@ body{
 @media(min-width:1240px){
   .lessonlist{grid-template-columns:1fr 1fr 1fr}
 }
+
+/* --- UX round: compact header, lesson search, TOC, fab --- */
+@media(max-width:520px){.brand{display:none}}
+.lsearchrow{margin:0 0 14px}
+.lsearchrow input{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.lsearchrow input:focus{outline:none;border-color:var(--accent)}
+.resume{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--accent);border-radius:12px;padding:10px 14px;margin:0 0 12px;cursor:pointer;font:inherit}
+.resume .ricon{font-size:16px;color:var(--accent)}
+.resume .rt{font-weight:600;color:var(--accent);font-size:14px}
+.resume .rm{font-size:11.5px;color:var(--muted)}
+.toc{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 18px;background:var(--surface)}
+.toc>b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:8px 0 0;padding-left:20px}
+.toc li{margin:3px 0;font-size:14px}
+.toc button{background:none;border:none;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;text-align:left}
+.toc button:hover{text-decoration:underline}
+.fab{position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:18px;line-height:1;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.fab.show{opacity:1;pointer-events:auto}
+.fab:hover{color:var(--accent);border-color:var(--accent)}
+.kbdhint{font-size:11px;color:var(--muted);margin:14px 0 0;text-align:center;font-family:"IBM Plex Mono",monospace;letter-spacing:.04em}
+@media(pointer:coarse){.kbdhint{display:none}}
 </style>
 </head>
 <body>
@@ -287,6 +308,7 @@ body{
   <div class="searchrow"><input id="qSearch" type="search" placeholder="Поиск по вопросам и пунктам…" autocomplete="off"></div>
   <div class="examrow"><button id="examBtn">🎓 Экзамен: 20 вопросов без эталона</button></div>
   <div id="view"></div>
+  <button class="fab" id="fabTop" aria-label="Наверх">↑</button>
 </div>
 
 <script>
@@ -10036,6 +10058,8 @@ let track="all", topic="all";
 let reading=null;        // открытый урок
 let activeLesson=null;   // урок, по которому идёт тест
 let codeTask=null;       // открытая задача код-тренажёра
+const LESSON_OF={};      // карточка -> первый урок, который её разбирает
+LESSONS.forEach(l=>l.cards.forEach(c=>{if(!LESSON_OF[c])LESSON_OF[c]=l.id;}));
 const CDKEY="codetasks_v1";
 function readCodeDone(){try{return JSON.parse(localStorage.getItem(CDKEY))||{}}catch(e){return {}}}
 function toggleCodeDone(id){try{const d=readCodeDone();if(d[id])delete d[id];else d[id]=Date.now();localStorage.setItem(CDKEY,JSON.stringify(d))}catch(e){}}
@@ -10130,7 +10154,7 @@ function deck(){
     return head+`<p class="hint">Ответь про себя вслух целиком, и только потом оценивай — иначе замер не сработает.</p>
       <div class="conf"><div class="lab">Насколько уверен</div>
         ${Object.entries(CONF).map(([k,v])=>`<button class="cbtn" data-conf="${k}">${v.label}<span class="k">${v.k}</span></button>`).join("")}
-      </div></div>`;
+      </div><p class="kbdhint">клавиши: 1 · 2 · 3 — самооценка, Enter — дальше</p></div>`;
   }
 
   const list=cur.points.map((p,i)=>`<button class="pt" data-i="${i}" data-on="${checked.has(i)?1:0}" style="animation-delay:${i*45}ms">
@@ -10158,6 +10182,7 @@ function deck(){
     </div>
     ${DEEP[cur.id]?`<button class="ghost" id="deepbtn">📖 Полный разбор — как отвечать на интервью</button>
     <div id="deep" class="deepbox hidden"><div class="lesson">${md(DEEP[cur.id])}</div></div>`:""}
+    ${LESSON_OF[cur.id]&&!activeLesson?`<button class="ghost" id="lessonlink" data-lid="${LESSON_OF[cur.id]}">📚 Урок по теме: ${esc((LESSONS.find(x=>x.id===LESSON_OF[cur.id])||{title:""}).title)}</button>`:""}
     <button class="primary" id="next">Следующий вопрос</button>
     <button class="ghost" id="again">Ещё раз этот</button></div>`;
 }
@@ -10282,7 +10307,7 @@ function theory(){
   const row=l=>{
     const set=new Set(l.cards);
     const cards=CARDS.filter(c=>set.has(c.id));
-    return `<button class="lrow" data-lesson="${esc(l.id)}" data-read="${done[l.id]?1:0}">
+    return `<button class="lrow" data-lesson="${esc(l.id)}" data-read="${done[l.id]?1:0}" data-search="${esc((l.title+" "+l.track+" "+(l.block||"")).toLowerCase())}">
       <span class="lt">${esc(l.title)}</span>
       <span class="lm">${esc(l.track)} · ${l.minutes||"?"} мин · ${cards.length} карточек · осталось ${left(cards)}</span>
     </button>`;
@@ -10303,10 +10328,17 @@ function theory(){
       <div class="lbbar"><i style="width:${Math.round(readN/g.items.length*100)}%"></i></div>
       <div class="lessonlist">${g.items.map(row).join("")}</div></div>`;
   }).join("");
+  let lastLesson=null;
+  try{const li=localStorage.getItem("lessons_last"); if(li) lastLesson=LESSONS.find(x=>x.id===li)||null;}catch(e){}
+  const resume=lastLesson?`<button class="resume" id="resumeLesson"><span class="ricon">▶</span>
+      <span><span class="rt">Продолжить: ${esc(lastLesson.title)}</span><br>
+      <span class="rm">${esc(lastLesson.track)} · ${lastLesson.minutes||"?"} мин</span></span></button>`:"";
   return `<div class="card theorycard">
     <div class="eyebrow">Теория</div>
     <h1 class="q" style="font-size:23px">Сначала урок, потом тест</h1>
     <p class="hint">Читаешь урок целиком, потом проходишь карточки по нему — они спрашивают ровно то, что было в тексте, и ничего сверх.</p>
+    ${resume}
+    <div class="lsearchrow"><input id="lessonSearch" type="search" placeholder="Найти урок среди ${LESSONS.length}…" autocomplete="off"></div>
     ${sections}</div>`;
 }
 function lessonView(l){
@@ -10324,6 +10356,8 @@ function lessonView(l){
     <div class="eyebrow">${esc(l.track)}<span class="dot"></span>${CARDS.filter(c=>set.has(c.id)).length} карточек${l.minutes?`<span class="dot"></span>${l.minutes} мин чтения`:""}</div>
     <h1 class="q" style="font-size:24px">${esc(l.title)}</h1>
     ${tldr}
+    ${(()=>{const hs=(l.body.match(/^## .+$/gm)||[]).map(s=>s.slice(3));
+      return hs.length>=3?`<div class="toc"><b>В этом уроке</b><ol>${hs.map((t,i)=>`<li><button data-toc="${i}">${inline(esc(t))}</button></li>`).join("")}</ol></div>`:"";})()}
     <div class="lesson">${md(l.body)}</div>
     ${media}
     ${src}
@@ -10378,8 +10412,35 @@ function codeTaskView(t){
 
 function bind(){
   document.querySelectorAll("[data-lesson]").forEach(b=>b.onclick=()=>{
-    reading=LESSONS.find(l=>l.id===b.dataset.lesson); render(); window.scrollTo(0,0); pushNav();
+    reading=LESSONS.find(l=>l.id===b.dataset.lesson);
+    try{localStorage.setItem("lessons_last",b.dataset.lesson)}catch(e){}
+    render(); window.scrollTo(0,0); pushNav();
   });
+  const rsl=document.getElementById("resumeLesson"); if(rsl) rsl.onclick=()=>{
+    let li=null; try{li=localStorage.getItem("lessons_last")}catch(e){}
+    reading=li?LESSONS.find(l=>l.id===li)||null:null;
+    if(reading){render(); window.scrollTo(0,0); pushNav();}
+  };
+  const lsi=document.getElementById("lessonSearch"); if(lsi) lsi.oninput=()=>{
+    const q=lsi.value.trim().toLowerCase();
+    document.querySelectorAll(".lrow[data-lesson]").forEach(r=>{
+      r.style.display=(!q||(r.dataset.search||"").includes(q))?"":"none";
+    });
+    document.querySelectorAll(".lblock").forEach(bl=>{
+      const any=[...bl.querySelectorAll(".lrow[data-lesson]")].some(r=>r.style.display!=="none");
+      bl.style.display=any?"":"none";
+    });
+  };
+  document.querySelectorAll("[data-toc]").forEach(b=>b.onclick=()=>{
+    const hs=document.querySelectorAll(".lesson h2");
+    const t=hs[+b.dataset.toc]; if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
+  });
+  const ll=document.getElementById("lessonlink"); if(ll) ll.onclick=()=>{
+    const l=LESSONS.find(x=>x.id===ll.dataset.lid); if(!l) return;
+    tab="theory"; reading=l;
+    try{localStorage.setItem("lessons_last",l.id)}catch(e){}
+    render(); window.scrollTo(0,0); pushNav();
+  };
   const st=document.getElementById("startTest"); if(st) st.onclick=()=>{
     activeLesson=reading; markDone(reading.id); reading=null; tab="deck";
     buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
@@ -10527,6 +10588,17 @@ document.getElementById("themeBtn").onclick=()=>{
   try{localStorage.setItem(TKEY,now)}catch(e){}
   applyTheme();
 };
+
+const fabBtn=document.getElementById("fabTop");
+window.addEventListener("scroll",()=>{
+  if(fabBtn) fabBtn.classList.toggle("show", window.scrollY>500);
+  if(tab==="theory"&&reading){
+    const d=document.documentElement;
+    const denom=d.scrollHeight-d.clientHeight;
+    rail.style.width=(denom>0?Math.min(100,window.scrollY/denom*100):0)+"%";
+  }
+},{passive:true});
+if(fabBtn) fabBtn.onclick=()=>window.scrollTo({top:0,behavior:"smooth"});
 
 (async()=>{hist=await load()||{};buildQueue();render();try{history.replaceState({tab,reading:null},"")}catch(e){}})();
 </script>
