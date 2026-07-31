@@ -203,7 +203,7 @@ body{
 .lesson a,.sources a{color:var(--accent);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 45%,transparent);text-underline-offset:2px;word-break:break-word}
 .lesson a:hover,.sources a:hover{text-decoration-color:var(--accent)}
 .codeblock{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:13px 15px;overflow-x:auto;margin:0 0 14px}
-.codeblock code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;line-height:1.55;color:var(--ink);white-space:pre}
+.codeblock code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;line-height:1.55;color:var(--ink);white-space:pre;background:none;border:none;border-radius:0;padding:0}
 .fig{margin:4px 0 18px;padding:14px 12px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .fig svg{display:block;width:100%;height:auto;min-width:560px}
 @media(min-width:640px){.fig svg{min-width:0}}
@@ -275,6 +275,7 @@ body{
       <div class="counter" id="counter"></div>
       <button class="tabbtn" id="themeBtn" title="Тема" aria-label="Переключить тему">◐</button>
       <button class="tabbtn" id="theoryBtn">Теория</button>
+      <button class="tabbtn" id="codeBtn">Код</button>
       <button class="tabbtn" id="tabBtn">Разбор</button>
     </div>
   </div>
@@ -8803,6 +8804,205 @@ async function save(d){
   try{ localStorage.setItem(KEY,JSON.stringify(d)) }catch(e){}
 }
 
+/* ---------- код-тренажёр: задачи вшивает tools/build_cards.py ---------- */
+const CODETASKS = [
+ {
+  "id": "ct_metrics",
+  "track": "Классический ML",
+  "level": "разминка",
+  "minutes": 10,
+  "title": "Precision / Recall / F1 с нуля",
+  "statement": "Дан список истинных меток и список предсказанных (мультикласс).\nПосчитай precision, recall и F1 **по каждому классу** и macro-среднее — без sklearn.\n\n```\nprf(y_true, y_pred) -> (per_class: dict[class -> (p, r, f1)], macro: (p, r, f1))\n```\n\nДоговорись о поведении на нулях: класс без предсказаний (TP+FP=0) получает precision 0 — и проговори это вслух.",
+  "hints": [
+   "Для каждого класса нужны три числа: TP (обе метки — класс), FP (предсказан класс, а истина другая), FN (истина — класс, предсказано другое).",
+   "F1 — гармоническое среднее: 2pr/(p+r); при p+r=0 договорись, что F1=0. Macro — обычное среднее по классам, без весов."
+  ],
+  "solution": "def prf(y_true, y_pred, labels=None):\n    labels = labels or sorted(set(y_true) | set(y_pred))\n    out = {}\n    for c in labels:\n        tp = sum(1 for t, p in zip(y_true, y_pred) if t == c and p == c)\n        fp = sum(1 for t, p in zip(y_true, y_pred) if t != c and p == c)\n        fn = sum(1 for t, p in zip(y_true, y_pred) if t == c and p != c)\n        prec = tp / (tp + fp) if tp + fp else 0.0\n        rec = tp / (tp + fn) if tp + fn else 0.0\n        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0\n        out[c] = (prec, rec, f1)\n    macro = tuple(sum(v[i] for v in out.values()) / len(out) for i in range(3))\n    return out, macro",
+  "check": "y_true = [\"a\", \"a\", \"b\", \"b\", \"c\"]\ny_pred = [\"a\", \"b\", \"b\", \"b\", \"b\"]\nper, macro = prf(y_true, y_pred)\nassert per[\"a\"] == (1.0, 0.5, 2/3)          # 1 TP, 0 FP, 1 FN\nassert per[\"b\"][0] == 0.5 and per[\"b\"][1] == 1.0\nassert per[\"c\"] == (0.0, 0.0, 0.0)          # класс не предсказан ни разу\nassert abs(macro[1] - (0.5 + 1.0 + 0.0) / 3) < 1e-9\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Не формулы (их знают все), а поведение на краях: класс без\nпредсказаний, класс без носителей, отличие micro от macro. Сильный ход — самому\nназвать договорённости до кода.\n\n- *Follow-up: micro-F1?* — Считается по суммарным TP/FP/FN всех классов; в\n  однометочном мультиклассе micro-F1 = accuracy (каждый FP одного класса — FN другого).\n- *Follow-up: weighted-F1?* — Macro, взвешенное носителями классов; скрывает провал\n  редкого класса — противоположность macro по смыслу."
+ },
+ {
+  "id": "ct_auc",
+  "track": "Классический ML",
+  "level": "основная",
+  "minutes": 20,
+  "title": "ROC-AUC из скоров за O(n log n)",
+  "statement": "Даны бинарные метки `y` и скоры `s`. Посчитай ROC-AUC **без sklearn** и без\nпостроения кривой — через ранги: AUC = вероятность, что случайный позитив\nотскорен выше случайного негатива.\n\n```\nroc_auc(y, s) -> float\n```\n\nСвязки (равные скоры) должны давать вклад 0.5 — используй средние ранги.",
+  "hints": [
+   "AUC = (сумма рангов позитивов − n1(n1+1)/2) / (n1·n0) — статистика Манна–Уитни. Ранги 1-based по возрастанию скора.",
+   "Связки: группе равных скоров назначь всем средний ранг группы — это и даёт вклад 0.5 за пару «позитив-негатив с равным скором»."
+  ],
+  "solution": "def roc_auc(y, s):\n    order = sorted(range(len(s)), key=lambda i: s[i])\n    ranks = [0.0] * len(s)\n    i = 0\n    while i < len(order):\n        j = i\n        while j + 1 < len(order) and s[order[j + 1]] == s[order[i]]:\n            j += 1\n        r = (i + j) / 2 + 1            # средний ранг связки, 1-based\n        for k in range(i, j + 1):\n            ranks[order[k]] = r\n        i = j + 1\n    pos = [ranks[k] for k in range(len(y)) if y[k] == 1]\n    n1, n0 = len(pos), len(y) - len(pos)\n    if not n1 or not n0:\n        raise ValueError(\"need both classes\")\n    return (sum(pos) - n1 * (n1 + 1) / 2) / (n1 * n0)",
+  "check": "assert roc_auc([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8]) == 0.75\nassert roc_auc([0, 1], [0.5, 0.5]) == 0.5          # связка -> 0.5\nassert roc_auc([0, 0, 1, 1], [0.1, 0.2, 0.3, 0.4]) == 1.0\nassert roc_auc([1, 1, 0, 0], [0.1, 0.2, 0.3, 0.4]) == 0.0\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Понимание, что AUC — это ранговая статистика (вероятностная\nинтерпретация), а не «площадь, которую строят трапециями»; аккуратность со\nсвязками; и вопрос «почему AUC не зависит от порога».\n\n- *Follow-up: сложность?* — Сортировка O(n log n), остальное линейно. Наивный\n  перебор пар — O(n²), на миллионе объектов это уже нельзя.\n- *Follow-up: чем AUC плох при дисбалансе 1:1000?* — FPR нормирован на все\n  негативы — смотри PR-AUC (см. карточку ml_rocpr)."
+ },
+ {
+  "id": "ct_softmax",
+  "track": "Основы DL",
+  "level": "разминка",
+  "minutes": 10,
+  "title": "Численно стабильный softmax и cross-entropy",
+  "statement": "Реализуй `softmax(z)` и `cross_entropy(logits, target)` так, чтобы они не\nвзрывались на `z = [1000, 1000, 1000]` (наивный `exp(1000)` — это inf).\n\n```\nsoftmax(z) -> list[float]          # суммируется в 1\ncross_entropy(logits, target) -> float   # -log p[target], стабильно\n```",
+  "hints": [
+   "softmax(z) = softmax(z − max(z)) — сдвиг на константу не меняет результат, а экспоненты перестают переполняться.",
+   "Для CE не считай softmax и потом log — используй log-sum-exp: CE = logsumexp(z) − z[target], где logsumexp(z) = max + log(Σ exp(z − max))."
+  ],
+  "solution": "import math\n\ndef softmax(z):\n    m = max(z)\n    e = [math.exp(v - m) for v in z]\n    s = sum(e)\n    return [v / s for v in e]\n\ndef cross_entropy(logits, target):\n    m = max(logits)\n    lse = m + math.log(sum(math.exp(v - m) for v in logits))\n    return lse - logits[target]",
+  "check": "import math\np = softmax([1000.0, 1000.0, 1000.0])\nassert all(abs(v - 1/3) < 1e-9 for v in p)\nassert abs(sum(softmax([1.0, 2.0, 3.0])) - 1) < 1e-12\nassert abs(cross_entropy([1000.0, 1000.0], 0) - math.log(2)) < 1e-9\nassert cross_entropy([100.0, -100.0], 0) < 1e-9      # уверенно и верно -> ~0\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Знание трюка max-shift и log-sum-exp — это тест «писал ли ты\nнизкоуровневый DL-код хоть раз». В реальных фреймворках то же самое:\n`F.cross_entropy` принимает логиты, а не вероятности, именно поэтому.\n\n- *Follow-up: почему log(softmax(x)) как две операции — плохо?* — softmax может\n  выдать ровно 0.0 при недополнении (underflow) — log даст -inf; слитный log-softmax этого\n  не делает.\n- *Follow-up: градиент CE по логитам?* — p − one_hot(target): одна из самых\n  красивых формул в DL, её любят спрашивать."
+ },
+ {
+  "id": "ct_attention",
+  "track": "LLM",
+  "level": "основная",
+  "minutes": 25,
+  "title": "Scaled dot-product attention с каузальной маской",
+  "statement": "Реализуй attention на numpy для одной головы:\n\n```\nattention(Q, K, V, causal=False) -> (out, weights)\n# Q: (n, d), K: (m, d), V: (m, dv); out: (n, dv), weights: (n, m)\n```\n\nТребования: деление на √d, каузальная маска через −inf **до** softmax,\nчисленно стабильный softmax по строкам.",
+  "hints": [
+   "scores = Q @ K.T / sqrt(d) — матрица (n, m). Маска: верхний треугольник (j > i) в −inf, np.triu(..., k=1).",
+   "Softmax по последней оси со сдвигом на максимум строки. −inf после экспоненты станет нулём — вес запрещённых позиций ровно 0."
+  ],
+  "solution": "import numpy as np\n\ndef attention(Q, K, V, causal=False):\n    d = Q.shape[-1]\n    scores = Q @ K.T / np.sqrt(d)                    # (n, m)\n    if causal:\n        n, m = scores.shape\n        mask = np.triu(np.ones((n, m), dtype=bool), k=1)\n        scores = np.where(mask, -np.inf, scores)\n    scores = scores - scores.max(axis=-1, keepdims=True)\n    w = np.exp(scores)\n    w = w / w.sum(axis=-1, keepdims=True)\n    return w @ V, w",
+  "check": "import numpy as np\nrng = np.random.default_rng(0)\nQ = rng.normal(size=(4, 8)); K = rng.normal(size=(4, 8)); V = rng.normal(size=(4, 5))\nout, w = attention(Q, K, V, causal=True)\nassert out.shape == (4, 5) and w.shape == (4, 4)\nassert np.allclose(w.sum(axis=-1), 1)\nassert np.allclose(np.triu(w, k=1), 0)               # будущее не видно\no2, w2 = attention(Q[:1], K[:1], V[:1])\nassert np.allclose(w2, [[1.0]])                      # один токен -> вес 1\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Три вещи, на которых валятся: маска ДО softmax (занулять веса\nпосле — значит сломать нормировку), −inf а не −1e9 без понимания зачем, и √d\n(без него дисперсия скоров растёт с d, softmax насыщается, градиенты умирают).\n\n- *Follow-up: почему именно √d?* — При независимых компонентах q·k имеет\n  дисперсию d; деление на √d возвращает её к 1 — softmax остаётся в рабочей зоне.\n- *Follow-up: сложность?* — O(n·m·d) по времени, O(n·m) по памяти на веса — отсюда\n  и вся история про FlashAttention (см. карточку llm_flash)."
+ },
+ {
+  "id": "ct_mha",
+  "track": "LLM",
+  "level": "основная",
+  "minutes": 25,
+  "title": "Multi-head attention: раскладка на головы",
+  "statement": "Поверх готовой `attention` (см. предыдущую задачу) собери многоголовое внимание:\n\n```\nmha(X, Wq, Wk, Wv, Wo, h, causal=True) -> (n, d)\n# X: (n, d); Wq/Wk/Wv/Wo: (d, d); h — число голов, d % h == 0\n```\n\nКлючевая механика — reshape (n, d) → (h, n, d/h), внимание в каждой голове\nнезависимо, конкатенация обратно и выходная проекция Wo.",
+  "hints": [
+   "split: M.reshape(n, h, dk).transpose(1, 0, 2) — получаем (h, n, dk). Обратно: stack по головам → transpose → reshape (n, d).",
+   "Все головы можно прогнать циклом по h — на собеседовании это нормально; батчёвый вариант — тот же код с einsum/матрицами (h, n, dk)."
+  ],
+  "solution": "import numpy as np\n\ndef mha(X, Wq, Wk, Wv, Wo, h, causal=True):\n    n, d = X.shape\n    dk = d // h\n    def split(M):                                  # (n, d) -> (h, n, dk)\n        return M.reshape(n, h, dk).transpose(1, 0, 2)\n    Qh, Kh, Vh = split(X @ Wq), split(X @ Wk), split(X @ Wv)\n    outs = [attention(Qh[i], Kh[i], Vh[i], causal=causal)[0] for i in range(h)]\n    O = np.stack(outs, axis=0).transpose(1, 0, 2).reshape(n, d)\n    return O @ Wo",
+  "check": "import numpy as np\nrng = np.random.default_rng(1)\nn, d, h = 5, 12, 3\nX = rng.normal(size=(n, d))\nWq, Wk, Wv, Wo = (rng.normal(size=(d, d)) for _ in range(4))\nout = mha(X, Wq, Wk, Wv, Wo, h)\nassert out.shape == (n, d)\n# одна голова с теми же весами == обычное внимание + проекция\nout1 = mha(X, Wq, Wk, Wv, Wo, 1)\nref = attention(X @ Wq, X @ Wk, X @ Wv, causal=True)[0] @ Wo\nassert np.allclose(out1, ref)\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Уверенное владение reshape/transpose — где именно живут головы\nв тензоре (n, h, dk) и почему транспонирование обязательно (reshape без него\nперемешает токены между головами — самый частый баг).\n\n- *Follow-up: зачем вообще головы?* — h подпространств по dk измерений: разные\n  головы выучивают разные отношения; при том же числе параметров — богаче, чем\n  одна голова на d.\n- *Follow-up: что такое GQA?* — K/V общие на группу Q-голов — экономия KV-кэша\n  (см. карточку llm_mqa)."
+ },
+ {
+  "id": "ct_kvcache",
+  "track": "LLM",
+  "level": "основная",
+  "minutes": 25,
+  "title": "Жадная генерация с KV-кэшем",
+  "statement": "Игрушечная модель: эмбеддинги `E (V, d)`, каузальное внимание одной головы\n(Wq, Wk, Wv) и выходная проекция `Wu (d, V)`. Логиты следующего токена — по\nпоследней позиции.\n\nНапиши два варианта жадной генерации `n_new` токенов и проверь, что они дают\nодинаковый результат:\n\n1. `generate_naive` — на каждом шаге полный форвард по всей последовательности;\n2. `generate_cached` — K и V промпта считаются один раз, на шаге считается\n   только q нового токена, кэш дописывается на одну строку.",
+  "hints": [
+   "В кэшированном варианте на каждом шаге нужен только вектор q ПОСЛЕДНЕГО токена: он смотрит на все накопленные K/V — каузальность соблюдается сама.",
+   "После выбора токена допиши его k и v в кэш (vstack одной строки). Ничего из старого пересчитывать не надо — в этом весь смысл."
+  ],
+  "solution": "import numpy as np\n\ndef _softmax(x):\n    x = x - x.max()\n    e = np.exp(x)\n    return e / e.sum()\n\ndef forward_full(tokens, E, Wq, Wk, Wv, Wu):\n    X = E[tokens]\n    out, _ = attention(X @ Wq, X @ Wk, X @ Wv, causal=True)\n    return out[-1] @ Wu                       # логиты по последней позиции\n\ndef generate_naive(prompt, E, Wq, Wk, Wv, Wu, n_new):\n    toks = list(prompt)\n    for _ in range(n_new):\n        toks.append(int(np.argmax(forward_full(toks, E, Wq, Wk, Wv, Wu))))\n    return toks\n\ndef generate_cached(prompt, E, Wq, Wk, Wv, Wu, n_new):\n    toks = list(prompt)\n    X = E[toks]\n    K, V = X @ Wk, X @ Wv                     # prefill: кэш промпта один раз\n    for _ in range(n_new):\n        q = E[toks[-1]] @ Wq                  # только новый токен\n        w = _softmax(q @ K.T / np.sqrt(q.shape[-1]))\n        logits = (w @ V) @ Wu\n        nxt = int(np.argmax(logits))\n        toks.append(nxt)\n        K = np.vstack([K, E[nxt] @ Wk])       # кэш растёт на строку\n        V = np.vstack([V, E[nxt] @ Wv])\n    return toks",
+  "check": "import numpy as np\nrng = np.random.default_rng(2)\nVv, d = 11, 6\nE = rng.normal(size=(Vv, d))\nWq, Wk, Wv_ = (rng.normal(size=(d, d)) for _ in range(3))\nWu = rng.normal(size=(d, Vv))\na = generate_naive([1, 4, 7], E, Wq, Wk, Wv_, Wu, 6)\nb = generate_cached([1, 4, 7], E, Wq, Wk, Wv_, Wu, 6)\nassert a == b, (a, b)\nprint(\"ok\", a)",
+  "notes": "**Что проверяют.** Понимание, ЧТО именно кэшируется и почему это корректно: у\nпрошлых токенов K/V не меняются (каузальность), пересчитывать их — чистая потеря.\nСовпадение с наивным вариантом — та проверка, которую стоит предложить самому.\n\n- *Follow-up: сложность шага?* — Без кэша шаг t стоит O(t²·d), с кэшем O(t·d);\n  вся генерация — O(n³) против O(n²).\n- *Follow-up: чем платим?* — Памятью: кэш растёт линейно с длиной × слои × головы —\n  отсюда PagedAttention и GQA (карточки kv, llm_paged)."
+ },
+ {
+  "id": "ct_sampling",
+  "track": "LLM",
+  "level": "основная",
+  "minutes": 20,
+  "title": "Temperature, top-k и top-p сэмплирование",
+  "statement": "Реализуй сэмплер следующего токена из логитов:\n\n```\nsample(logits, temperature=1.0, top_k=None, top_p=None, rng=random) -> int\n```\n\nПорядок: температура → softmax → отбор кандидатов (top-k и/или top-p по\nубыванию вероятности) → перенормировка → сэмпл. `temperature=0` — жадный выбор.\nДля top-p оставь минимальный префикс, сумма которого ≥ p (первый токен — всегда).",
+  "hints": [
+   "Отсортируй индексы по убыванию вероятности один раз — и top-k, и top-p — это срезы этого списка.",
+   "После усечения вероятности больше не суммируются в 1 — перенормируй (или сэмплируй из усечённой суммы). Сэмпл: r = rng.random()·total, вычитай по очереди."
+  ],
+  "solution": "import math, random\n\ndef _softmax_list(z):\n    m = max(z)\n    e = [math.exp(v - m) for v in z]\n    s = sum(e)\n    return [v / s for v in e]\n\ndef sample(logits, temperature=1.0, top_k=None, top_p=None, rng=random):\n    if temperature <= 0:\n        return max(range(len(logits)), key=lambda i: logits[i])\n    p = _softmax_list([v / temperature for v in logits])\n    idx = sorted(range(len(p)), key=lambda i: -p[i])\n    if top_k is not None:\n        idx = idx[:top_k]\n    if top_p is not None:\n        keep, acc = [], 0.0\n        for i in idx:\n            keep.append(i)\n            acc += p[i]\n            if acc >= top_p:\n                break\n        idx = keep\n    total = sum(p[i] for i in idx)\n    r = rng.random() * total\n    for i in idx:\n        r -= p[i]\n        if r <= 0:\n            return i\n    return idx[-1]",
+  "check": "import random\nlogits = [2.0, 1.0, 0.1, -1.0]\nassert sample(logits, temperature=0) == 0                 # жадный\nassert sample(logits, top_k=1) == 0                       # top-1 == argmax\nrng = random.Random(42)\ngot = {sample(logits, top_k=2, rng=rng) for _ in range(200)}\nassert got == {0, 1}                                      # только два лучших\ngot = {sample(logits, top_p=0.01, rng=rng) for _ in range(50)}\nassert got == {0}                                         # префикс минимум из одного\ncounts = [0, 0, 0, 0]\nfor _ in range(4000):\n    counts[sample(logits, rng=rng)] += 1\nassert counts[0] > counts[1] > counts[3]                  # частоты следуют p\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Порядок операций (температура до усечения), перенормировку\nпосле усечения и краевые случаи: temperature=0, top_p меньше первой вероятности\n(должен остаться один токен, а не ноль).\n\n- *Follow-up: чем top-p лучше top-k?* — k фиксирован, а форма распределения\n  меняется: на уверенном шаге top-p оставит 1–2 токена, на неуверенном — десятки;\n  top-k слеп к форме (карточка llm_sampling).\n- *Follow-up: температура → ∞?* — Равномерное распределение; → 0 — argmax; это\n  полезно проговорить как санити-чек своей реализации."
+ },
+ {
+  "id": "ct_bpe",
+  "track": "NLP",
+  "level": "со звёздочкой",
+  "minutes": 35,
+  "title": "Mini-BPE: обучение и токенизация",
+  "statement": "Реализуй ядро BPE:\n\n```\ntrain_bpe(corpus: str, n_merges: int) -> list[(a, b)]   # merges по порядку\nencode(word: str, merges) -> list[str]                  # токены слова\n```\n\nОбучение: слова корпуса разбиваются на символы (+ маркер конца `</w>`),\nна каждом шаге сливается самая частая соседняя пара. Кодирование: применяй\nmerges к слову в том же порядке. Не используй `str.replace` по строке с\nпробелами — сливай пары списковой обработкой (replace ловит ложные границы).",
+  "hints": [
+   "Держи слова как списки символов с частотой: {('l','o','w','</w>'): 5, ...}. Подсчёт пар — один проход по всем словам с zip(syms, syms[1:]).",
+   "Слияние пары в слове: идёшь слева направо, если syms[i:i+2] == (a, b) — кладёшь a+b и перескакиваешь через два, иначе копируешь один символ."
+  ],
+  "solution": "def _merge(syms, a, b):\n    out, i = [], 0\n    while i < len(syms):\n        if i < len(syms) - 1 and syms[i] == a and syms[i + 1] == b:\n            out.append(a + b)\n            i += 2\n        else:\n            out.append(syms[i])\n            i += 1\n    return tuple(out)\n\ndef train_bpe(corpus, n_merges):\n    words = {}\n    for w in corpus.split():\n        key = tuple(w) + (\"</w>\",)\n        words[key] = words.get(key, 0) + 1\n    merges = []\n    for _ in range(n_merges):\n        pairs = {}\n        for syms, f in words.items():\n            for pair in zip(syms, syms[1:]):\n                pairs[pair] = pairs.get(pair, 0) + f\n        if not pairs:\n            break\n        a, b = max(pairs, key=pairs.get)\n        merges.append((a, b))\n        words = { _merge(s, a, b): f for s, f in words.items() }\n    return merges\n\ndef encode(word, merges):\n    syms = tuple(word) + (\"</w>\",)\n    for a, b in merges:\n        syms = _merge(syms, a, b)\n    return list(syms)",
+  "check": "corpus = \"low low low low low lower lower newest newest newest newest newest newest widest widest widest\"\nmerges = train_bpe(corpus, 10)\nassert merges[0] == (\"e\", \"s\")            # самая частая пара: 6 newest + 3 widest\nassert merges[1] == (\"es\", \"t\")\ntoks = encode(\"lowest\", merges)\nassert \"\".join(toks) == \"lowest</w>\"      # токены собираются обратно в слово\nassert \"est</w>\" in toks                  # выучен суффикс\nassert len(encode(\"low\", merges)) <= 2\nprint(\"ok\", toks)",
+  "notes": "**Что проверяют.** Аккуратность с инвариантом «частоты пар считаются по словам с\nих частотами», порядок применения merges при кодировании (тот же, что при\nобучении — не жадный по длине!) и знание бага со `str.replace` через границы\nсимволов.\n\n- *Follow-up: сложность обучения?* — Наивно O(n_merges × размер корпуса);\n  реальные реализации инкрементально обновляют счётчики только затронутых пар.\n- *Follow-up: почему `</w>`?* — Без маркера конца слова «est» в середине и в\n  конце — один токен, и декодирование неоднозначно (карточки tok, nl_tokcomp)."
+ },
+ {
+  "id": "ct_bigram",
+  "track": "NLP",
+  "level": "основная",
+  "minutes": 20,
+  "title": "Bigram-LM со сглаживанием и перплексия",
+  "statement": "Обучи биграммную языковую модель со сглаживанием Лапласа и посчитай\nперплексию на новых предложениях:\n\n```\ntrain(sents: list[str]) -> (uni, bi, V)     # счётчики и размер словаря\nperplexity(sents, uni, bi, V) -> float\n```\n\nКаждое предложение обрамляется `<s> ... </s>`; вероятность\nP(b|a) = (count(a,b) + 1) / (count(a) + V); перплексия = exp(−средний log P на токен).",
+  "hints": [
+   "Считай перплексию в лог-пространстве: суммируй log p, дели на число предсказанных токенов (слова + </s>), бери exp(−·). Перемножение вероятностей уйдёт в underflow.",
+   "V — размер словаря для сглаживания (все виденные токены, включая </s>). Незнакомое слово в тесте получит счётчики 0 — сглаживание спасает от log(0)."
+  ],
+  "solution": "import math\n\ndef train(sents):\n    uni, bi, vocab = {}, {}, set([\"</s>\"])\n    for s in sents:\n        toks = [\"<s>\"] + s.split() + [\"</s>\"]\n        vocab.update(toks[1:])\n        for a, b in zip(toks, toks[1:]):\n            uni[a] = uni.get(a, 0) + 1\n            bi[(a, b)] = bi.get((a, b), 0) + 1\n    return uni, bi, len(vocab)\n\ndef perplexity(sents, uni, bi, V):\n    lp, n = 0.0, 0\n    for s in sents:\n        toks = [\"<s>\"] + s.split() + [\"</s>\"]\n        for a, b in zip(toks, toks[1:]):\n            p = (bi.get((a, b), 0) + 1) / (uni.get(a, 0) + V)\n            lp += math.log(p)\n            n += 1\n    return math.exp(-lp / n)",
+  "check": "import math\nuni, bi, V = train([\"я люблю кофе\", \"я люблю чай\"])\nassert bi[(\"я\", \"люблю\")] == 2 and uni[\"я\"] == 2\np = (bi[(\"я\", \"люблю\")] + 1) / (uni[\"я\"] + V)\nassert p == 3 / (2 + V)\nppl_seen = perplexity([\"я люблю кофе\"], uni, bi, V)\nppl_new = perplexity([\"кофе люблю я\"], uni, bi, V)\nassert ppl_seen < ppl_new                    # знакомый порядок слов легче\nassert ppl_seen > 1\nprint(\"ok\", round(ppl_seen, 2), round(ppl_new, 2))",
+  "notes": "**Что проверяют.** Работу в лог-пространстве (перемножать вероятности нельзя),\nправильный знаменатель перплексии (число ПРЕДСКАЗАННЫХ токенов) и понимание,\nзачем сглаживание. Это та же перплексия, которой меряют LLM — только модель\nпроще.\n\n- *Follow-up: что значит перплексия 20?* — Модель в среднем «выбирает из 20\n  равновероятных продолжений»; ветвление, а не процент ошибок.\n- *Follow-up: чем Лаплас плох?* — Слишком много массы уходит на невиданное при\n  большом V; лучше — Кнезер–Ней (упомянуть достаточно)."
+ },
+ {
+  "id": "ct_beam",
+  "track": "LLM",
+  "level": "со звёздочкой",
+  "minutes": 30,
+  "title": "Beam search с нормировкой на длину",
+  "statement": "Реализуй beam search поверх чёрного ящика `next_logprobs(seq) -> [(token, logp), ...]`:\n\n```\nbeam_search(next_logprobs, bos, eos, k, max_len, alpha=0.0) -> list[int]\n```\n\nДержи k лучших незавершённых гипотез по суммарному logp; гипотеза, дошедшая до\n`eos`, откладывается в завершённые. Итог — лучшая завершённая по\n`score = logp / len(seq)**alpha` (alpha=0 — без нормировки; alpha≈0.7 — стандарт).",
+  "hints": [
+   "Шаг: расширь каждую живую гипотезу всеми продолжениями, отсортируй по logp, пройди сверху: eos — в done, иначе в новый beam, пока не наберётся k.",
+   "Нормировка на длину — только при ФИНАЛЬНОМ сравнении (или при откладывании в done): иначе сравниваешь гипотезы разной длины нечестно уже в процессе."
+  ],
+  "solution": "def beam_search(next_logprobs, bos, eos, k, max_len, alpha=0.0):\n    beams = [([bos], 0.0)]\n    done = []\n    for _ in range(max_len):\n        cand = []\n        for seq, lp in beams:\n            for tok, tlp in next_logprobs(seq):\n                cand.append((seq + [tok], lp + tlp))\n        beams = []\n        for seq, lp in sorted(cand, key=lambda x: -x[1]):\n            if seq[-1] == eos:\n                done.append((seq, lp / len(seq) ** alpha))\n            elif len(beams) < k:\n                beams.append((seq, lp))\n        if not beams:\n            break\n    done += [(s, lp / len(s) ** alpha) for s, lp in beams]\n    return max(done, key=lambda x: x[1])[0]",
+  "check": "import math\n# игрушечный язык: из 0 можно в 1 (p=.6) или 2 (p=.4); из 1 -> eos(9) p=.3 / 2 p=.7; из 2 -> eos p=.9 / 1 p=.1\nTABLE = {0: [(1, .6), (2, .4)], 1: [(9, .3), (2, .7)], 2: [(9, .9), (1, .1)]}\ndef nlp_fn(seq):\n    return [(t, math.log(p)) for t, p in TABLE[seq[-1]]]\nbest = beam_search(nlp_fn, bos=0, eos=9, k=2, max_len=5)\n# лучший путь: 0 -> 2 -> eos: .4*.9=.36 против 0->1->eos .18 и 0->1->2->eos .378 (длиннее)\nassert best == [0, 1, 2, 9], best         # без нормировки побеждает .378\nbest_greedy = beam_search(nlp_fn, bos=0, eos=9, k=1, max_len=5)\nassert best_greedy == [0, 1, 2, 9]\nprint(\"ok\", best)",
+  "notes": "**Что проверяют.** Инвариант «k живых гипотез после каждого шага», отдельный\nпул завершённых и понимание, зачем нормировка: без неё beam search\nсистематически предпочитает короткие ответы (каждый шаг добавляет отрицательный\nlogp).\n\n- *Follow-up: k=1 — что это?* — Жадный поиск; beam с k=V — полный перебор.\n  Больший k не монотонно улучшает качество текста (переоптимизация правдоподобия).\n- *Follow-up: почему для чат-LLM сэмплируют, а не beam?* — Beam ищет моду\n  распределения — она скучна и дегенеративна на открытой генерации; сэмплинг\n  даёт разнообразие (карточка llm_sampling)."
+ },
+ {
+  "id": "ct_logreg",
+  "track": "Классический ML",
+  "level": "основная",
+  "minutes": 25,
+  "title": "Логистическая регрессия градиентным спуском",
+  "statement": "Обучи логрег полным градиентным спуском на numpy:\n\n```\ntrain_logreg(X, y, lr=0.5, steps=2000, l2=0.0) -> (w, b)\n```\n\nГрадиент выведи сам: для logloss он равен `X.T @ (p − y) / n` (плюс `l2·w`).\nПроверь на линейно разделимых данных: точность 100% и logloss, падающий по шагам.",
+  "hints": [
+   "p = sigmoid(X @ w + b). Красота logloss: градиент по логитам — просто (p − y); дальше цепное правило даёт X.T @ (p − y) / n.",
+   "Сигмоиду пиши стабильно или клиппи логиты; на разделимых данных без L2 веса уходят в бесконечность — это ожидаемо, останови по шагам."
+  ],
+  "solution": "import numpy as np\n\ndef train_logreg(X, y, lr=0.5, steps=2000, l2=0.0):\n    n, d = X.shape\n    w, b = np.zeros(d), 0.0\n    for _ in range(steps):\n        p = 1.0 / (1.0 + np.exp(-np.clip(X @ w + b, -30, 30)))\n        gw = X.T @ (p - y) / n + l2 * w\n        gb = float((p - y).mean())\n        w -= lr * gw\n        b -= lr * gb\n    return w, b",
+  "check": "import numpy as np\nrng = np.random.default_rng(3)\nX0 = rng.normal(loc=-2, size=(60, 2))\nX1 = rng.normal(loc=+2, size=(60, 2))\nX = np.vstack([X0, X1]); y = np.array([0]*60 + [1]*60)\nw, b = train_logreg(X, y, lr=0.5, steps=800)\np = 1/(1 + np.exp(-(X @ w + b)))\nassert ((p > 0.5) == y).mean() == 1.0            # разделимо -> 100%\nw2, b2 = train_logreg(X, y, steps=50)\nll = lambda pp: -(y*np.log(pp+1e-12) + (1-y)*np.log(1-pp+1e-12)).mean()\np2 = 1/(1 + np.exp(-(X @ w2 + b2)))\nassert ll(p) < ll(p2)                            # больше шагов -> ниже logloss\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Вывод градиента (главный момент — сказать «по логитам это\np − y» без бумажки), векторизацию без циклов по объектам и понимание поведения\nна разделимых данных (веса растут неограниченно — зачем нужна регуляризация).\n\n- *Follow-up: чем этот код отличается от SGD?* — Полный батч на шаг; SGD — тот же\n  градиент по мини-батчу, шумнее, но дешевле на больших n.\n- *Follow-up: как из этого получить softmax-регрессию?* — W (d, C), softmax по\n  строкам, градиент X.T @ (P − Y_onehot) / n — та же формула."
+ },
+ {
+  "id": "ct_kmeans",
+  "track": "Классический ML",
+  "level": "основная",
+  "minutes": 25,
+  "title": "K-means с нуля",
+  "statement": "Реализуй k-means на чистом Python:\n\n```\nkmeans(pts: list[tuple], k, iters=100, seed=0) -> (centers, assign)\n```\n\nЦикл Ллойда: назначить каждую точку ближайшему центру → пересчитать центры как\nсредние своих точек → до сходимости (назначения не изменились). Реши, что\nделать с опустевшим кластером, и озвучь решение.",
+  "hints": [
+   "Расстояние достаточно сравнивать по квадрату — sqrt монотонен и не нужен. Средние по координатам: zip(*points).",
+   "Пустой кластер: оставить старый центр (просто), пере-сеять дальней точкой (лучше). Инициализация — случайные k точек данных (rng.sample), сид для воспроизводимости."
+  ],
+  "solution": "import random\n\ndef kmeans(pts, k, iters=100, seed=0):\n    rng = random.Random(seed)\n    centers = [list(p) for p in rng.sample(list(pts), k)]\n    assign = [-1] * len(pts)\n    for _ in range(iters):\n        changed = False\n        for i, p in enumerate(pts):\n            j = min(range(k),\n                    key=lambda c: sum((a - b) ** 2 for a, b in zip(p, centers[c])))\n            if j != assign[i]:\n                assign[i] = j\n                changed = True\n        for c in range(k):\n            mine = [pts[i] for i in range(len(pts)) if assign[i] == c]\n            if mine:\n                centers[c] = [sum(vals) / len(mine) for vals in zip(*mine)]\n        if not changed:\n            break\n    return centers, assign",
+  "check": "pts = [(0, 0), (0, 1), (1, 0), (10, 10), (10, 11), (11, 10)]\ncenters, assign = kmeans(pts, 2, seed=1)\nassert assign[0] == assign[1] == assign[2]\nassert assign[3] == assign[4] == assign[5]\nassert assign[0] != assign[3]\nc_small = centers[assign[0]]\nassert abs(c_small[0] - 1/3) < 1e-9 and abs(c_small[1] - 1/3) < 1e-9\nprint(\"ok\", centers)",
+  "notes": "**Что проверяют.** Чистоту цикла Ллойда, критерий остановки (назначения, а не\n«центры чуть сдвинулись»), краевые случаи (пустой кластер) и понимание свойств:\nсходится к ЛОКАЛЬНОМУ минимуму, результат зависит от инициализации.\n\n- *Follow-up: как выбрать k?* — Elbow по инерции, silhouette; честный ответ —\n  «из предметной задачи», метрики лишь подсказывают.\n- *Follow-up: что такое k-means++?* — Инициализация с вероятностью ∝ D²(x) до\n  ближайшего выбранного центра — резко стабилизирует результат."
+ },
+ {
+  "id": "ct_dpo",
+  "track": "LLM",
+  "level": "со звёздочкой",
+  "minutes": 20,
+  "title": "DPO loss на numpy",
+  "statement": "Реализуй функцию потерь DPO по суммарным лог-вероятностям ответов:\n\n```\ndpo_loss(pi_c, pi_r, ref_c, ref_r, beta=0.1) -> (loss, margin)\n# pi_c/pi_r  — log P ответа chosen/rejected под обучаемой политикой, shape (B,)\n# ref_c/ref_r — то же под замороженной референсной моделью\n```\n\nloss = −log σ(β·[(pi_c − ref_c) − (pi_r − ref_r)]), усреднённый по батчу.\nРеализуй −log σ(x) численно стабильно (это softplus(−x) = logaddexp(0, −x)).",
+  "hints": [
+   "Внутри скобок — разность неявных наград: r(x,y) = β·(log π(y) − log π_ref(y)). DPO учит margin между chosen и rejected.",
+   "−log σ(x) = log(1 + e^(−x)) = np.logaddexp(0, −x) — не считай сигмоиду и логарифм по отдельности: σ(−40) даст 0.0 и log взорвётся."
+  ],
+  "solution": "import numpy as np\n\ndef dpo_loss(pi_c, pi_r, ref_c, ref_r, beta=0.1):\n    margin = beta * ((pi_c - ref_c) - (pi_r - ref_r))\n    loss = np.logaddexp(0.0, -margin)          # = -log sigmoid(margin)\n    return float(loss.mean()), margin",
+  "check": "import numpy as np, math\nz = np.zeros(1)\nloss, m = dpo_loss(z, z, z, z)\nassert abs(loss - math.log(2)) < 1e-9          # нет сигнала -> -log 0.5\n# политика уже предпочитает chosen сильнее референса -> лосс ниже log 2\nloss2, m2 = dpo_loss(np.array([-1.0]), np.array([-9.0]), z - 1.0, z - 5.0, beta=1.0)\nassert m2[0] == 4.0 and loss2 < math.log(2)\n# экстремальный margin не взрывается\nloss3, _ = dpo_loss(np.array([0.0]), np.array([-1000.0]), z, z, beta=1.0)\nassert np.isfinite(loss3) and loss3 < 1e-6\nbig, _ = dpo_loss(np.array([-1000.0]), np.array([0.0]), z, z, beta=1.0)\nassert np.isfinite(big) and big > 100          # уверенно неправ -> большой лосс\nprint(\"ok\")",
+  "notes": "**Что проверяют.** Понимание, что DPO — это бинарная классификация пар с\nнеявной наградой β·(log π − log π_ref): референс вычитается, чтобы штрафовать\nУХОД от исходной модели, а не абсолютные вероятности. Плюс численная\nстабильность softplus.\n\n- *Follow-up: роль β?* — Обратная температура: большой β — резкий сдвиг к\n  предпочтениям (риск деградации), малый — консервативность (карточка llm_dpo).\n- *Follow-up: почему без reward-модели?* — Оптимум RLHF-задачи выражается через\n  π и π_ref аналитически — DPO подставляет его в Bradley–Terry и обучает\n  напрямую."
+ }
+];
+
 /* ---------- состояние ---------- */
 let hist={};           // id -> {seen, actual, exp, gap, box, t}
 let queue=[];
@@ -8821,6 +9021,10 @@ const isDue=c=>!!hist[c.id]&&Date.now()>=dueAt(hist[c.id]);
 let track="all", topic="all";
 let reading=null;        // открытый урок
 let activeLesson=null;   // урок, по которому идёт тест
+let codeTask=null;       // открытая задача код-тренажёра
+const CDKEY="codetasks_v1";
+function readCodeDone(){try{return JSON.parse(localStorage.getItem(CDKEY))||{}}catch(e){return {}}}
+function toggleCodeDone(id){try{const d=readCodeDone();if(d[id])delete d[id];else d[id]=Date.now();localStorage.setItem(CDKEY,JSON.stringify(d))}catch(e){}}
 function pool(){
   if(activeLesson){const s=new Set(activeLesson.cards); return CARDS.filter(c=>s.has(c.id));}
   let p=CARDS;
@@ -8885,12 +9089,14 @@ function render(){
   const eb=document.getElementById("examBtn");
   if(eb) eb.textContent=exam?"✕ Прервать экзамен ("+exam.log.length+" / "+exam.total+")":"🎓 Экзамен: 20 вопросов без эталона";
   tabBtn.textContent = tab==="stats" ? "К карточкам" : "Разбор";
+  const cbt=document.getElementById("codeBtn");
+  if(cbt) cbt.textContent = tab==="code" ? "К карточкам" : "Код";
   theoryBtn.textContent = tab==="theory" ? "К карточкам" : "Теория";
   const onDeck = (tab==="deck" && !activeLesson);
   document.querySelector(".selrow").style.display = onDeck ? "grid" : "none";
   document.querySelector(".searchrow").style.display = onDeck ? "block" : "none";
   document.querySelector(".examrow").style.display = (onDeck && phase!=="examdone") ? "block" : "none";
-  view.innerHTML = tab==="stats" ? stats() : tab==="theory" ? theory() : lessonBar()+deck();
+  view.innerHTML = tab==="stats" ? stats() : tab==="theory" ? theory() : tab==="code" ? codePage() : lessonBar()+deck();
   fillTopics();
   bind();
 }
@@ -9038,7 +9244,15 @@ function md(src){
     if(b.startsWith("{{fig:")){const name=b.slice(6,b.indexOf("}}")); return FIGS[name]?`<figure class="fig">${FIGS[name]}</figure>`:"";}
     if(b.startsWith("## ")) return `<h2>${inline(esc(b.slice(3)))}</h2>`;
     if(b.startsWith("> ")) return `<blockquote>${inline(esc(b.replace(/^> ?/gm,"")))}</blockquote>`;
-    if(/^[-*] /.test(b)) return `<ul>${b.split("\n").map(li=>`<li>${inline(esc(li.replace(/^[-*] +/,"")))}</li>`).join("")}</ul>`;
+    if(/^[-*] /.test(b)){
+      const items=[];
+      b.split("\n").forEach(line=>{
+        if(/^[-*] /.test(line)) items.push(line.replace(/^[-*] +/,""));
+        else if(items.length) items[items.length-1]+=" "+line.trim();
+        else items.push(line.trim());
+      });
+      return `<ul>${items.map(li=>`<li>${inline(esc(li))}</li>`).join("")}</ul>`;
+    }
     return `<p>${inline(esc(b))}</p>`;
   }).join("");
 }
@@ -9103,6 +9317,51 @@ function lessonView(l){
     <button class="ghost" id="backLessons">К списку уроков</button></div>`;
 }
 
+
+/* ---------- код-тренажёр: список задач и задача ---------- */
+function codePage(){
+  if(codeTask) return codeTaskView(codeTask);
+  if(!CODETASKS.length) return `<div class="card"><p class="empty">Задач пока нет. Они лежат в banks/code_tasks.json и вшиваются скриптом tools/build_cards.py.</p></div>`;
+  const done=readCodeDone();
+  const row=t=>`<button class="lrow" data-codetask="${esc(t.id)}" data-read="${done[t.id]?1:0}">
+      <span class="lt">${esc(t.title)}</span>
+      <span class="lm">${esc(t.track)} · ${t.minutes} мин${done[t.id]?" · решена ✓":""}</span></button>`;
+  const groups=[["разминка","Разминка"],["основная","Основные"],["со звёздочкой","Со звёздочкой"]];
+  const sections=groups.map(([lv,name],gi)=>{
+    const items=CODETASKS.filter(t=>t.level===lv);
+    if(!items.length) return "";
+    const doneN=items.filter(t=>done[t.id]).length;
+    return `<div class="lblock"><div class="lblockhead">
+        <span class="lbnum">${String(gi+1).padStart(2,"0")}</span>
+        <span class="lbtitle">${name}</span>
+        <span class="lblockn">${doneN}/${items.length}</span></div>
+      <div class="lbbar"><i style="width:${Math.round(doneN/items.length*100)}%"></i></div>
+      <div class="lessonlist">${items.map(row).join("")}</div></div>`;
+  }).join("");
+  return `<div class="card theorycard">
+    <div class="eyebrow">Код-тренажёр</div>
+    <h1 class="q" style="font-size:23px">Пиши с нуля, потом сверяйся</h1>
+    <p class="hint">Формат кодинг-секции: реши задачу в своём редакторе БЕЗ подглядывания, прогони блок «Проверь себя» — и только потом открывай эталон. Подсказки — по одной, как наводки интервьюера.</p>
+    ${sections}</div>`;
+}
+function codeTaskView(t){
+  const done=readCodeDone();
+  const hints=(t.hints||[]).map((hh,i)=>`<button class="ghost hintbtn" data-hint="${i}">💡 Подсказка ${i+1}</button>
+    <div class="deepbox hidden" id="hint${i}"><div class="lesson"><p>${inline(esc(hh))}</p></div></div>`).join("");
+  return `<div class="card">
+    <button class="backbtn" id="backTopC">← Все задачи</button>
+    <div class="eyebrow">${esc(t.track)}<span class="dot"></span>${esc(t.level)}<span class="dot"></span>~${t.minutes} мин</div>
+    <h1 class="q" style="font-size:24px">${esc(t.title)}</h1>
+    <div class="lesson">${md(t.statement)}</div>
+    ${hints}
+    <button class="ghost" id="checkBtn">🧪 Проверь себя — тест-код для твоего решения</button>
+    <div class="deepbox hidden" id="checkBox"><div class="lesson"><pre class="codeblock"><code>${esc(t.check)}</code></pre></div></div>
+    <button class="primary" id="solBtn">Показать эталонное решение</button>
+    <div class="deepbox hidden" id="solBox"><div class="lesson"><pre class="codeblock"><code>${esc(t.solution)}</code></pre>${md(t.notes)}</div></div>
+    <button class="ghost" id="ctDone">${done[t.id]?"✓ Решена — снять отметку":"Отметить решённой"}</button>
+    <button class="ghost" id="backCode">К списку задач</button></div>`;
+}
+
 function bind(){
   document.querySelectorAll("[data-lesson]").forEach(b=>b.onclick=()=>{
     reading=LESSONS.find(l=>l.id===b.dataset.lesson); render(); window.scrollTo(0,0); pushNav();
@@ -9112,6 +9371,23 @@ function bind(){
     buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
   };
   const goBackLessons=()=>{reading=null;render();window.scrollTo(0,0);pushNav()};
+  document.querySelectorAll("[data-codetask]").forEach(b=>b.onclick=()=>{
+    codeTask=CODETASKS.find(t=>t.id===b.dataset.codetask); render(); window.scrollTo(0,0); pushNav();
+  });
+  const goBackCode=()=>{codeTask=null;render();window.scrollTo(0,0);pushNav()};
+  const btc=document.getElementById("backTopC"); if(btc) btc.onclick=goBackCode;
+  const bkc=document.getElementById("backCode"); if(bkc) bkc.onclick=goBackCode;
+  document.querySelectorAll(".hintbtn").forEach(b=>b.onclick=()=>{
+    document.getElementById("hint"+b.dataset.hint).classList.toggle("hidden");
+  });
+  const chb=document.getElementById("checkBtn"); if(chb) chb.onclick=()=>{
+    document.getElementById("checkBox").classList.toggle("hidden");
+  };
+  const slb=document.getElementById("solBtn"); if(slb) slb.onclick=()=>{
+    const bx=document.getElementById("solBox"); bx.classList.toggle("hidden");
+    slb.textContent=bx.classList.contains("hidden")?"Показать эталонное решение":"Скрыть решение";
+  };
+  const ctd=document.getElementById("ctDone"); if(ctd) ctd.onclick=()=>{toggleCodeDone(codeTask.id);render()};
   const bl=document.getElementById("backLessons"); if(bl) bl.onclick=goBackLessons;
   const bt=document.getElementById("backTop"); if(bt) bt.onclick=goBackLessons;
   const el=document.getElementById("exitLesson"); if(el) el.onclick=()=>{
@@ -9200,15 +9476,17 @@ function bind(){
     };
   }
 }
-function pushNav(){try{history.pushState({tab,reading:reading?reading.id:null},"")}catch(e){}}
+function pushNav(){try{history.pushState({tab,reading:reading?reading.id:null,codeTask:codeTask?codeTask.id:null},"")}catch(e){}}
 window.addEventListener("popstate",e=>{
-  const s=e.state||{tab:"deck",reading:null};
+  const s=e.state||{tab:"deck",reading:null,codeTask:null};
   tab=s.tab||"deck";
   reading=s.reading?LESSONS.find(l=>l.id===s.reading)||null:null;
+  codeTask=s.codeTask?CODETASKS.find(t=>t.id===s.codeTask)||null:null;
   render(); window.scrollTo(0,0);
 });
-tabBtn.onclick=()=>{tab=tab==="stats"?"deck":"stats";reading=null;render();pushNav()};
-theoryBtn.onclick=()=>{tab=tab==="theory"?"deck":"theory";reading=null;render();window.scrollTo(0,0);pushNav()};
+tabBtn.onclick=()=>{tab=tab==="stats"?"deck":"stats";reading=null;codeTask=null;render();pushNav()};
+theoryBtn.onclick=()=>{tab=tab==="theory"?"deck":"theory";reading=null;codeTask=null;render();window.scrollTo(0,0);pushNav()};
+document.getElementById("codeBtn").onclick=()=>{tab=tab==="code"?"deck":"code";reading=null;codeTask=null;render();window.scrollTo(0,0);pushNav()};
 document.addEventListener("keydown",e=>{
   if(e.target && e.target.tagName==="INPUT") return;
   if(phase==="ask"){const m={"1":"sure","2":"part","3":"no"}[e.key]; if(m){conf=m;phase="reveal";checked.clear();render()}}

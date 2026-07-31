@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK = ROOT / "banks" / "bank_full.json"
 LESSONS = ROOT / "banks" / "lessons.json"
 FIGURES = ROOT / "banks" / "figures.json"
+CODE_TASKS = ROOT / "banks" / "code_tasks.json"
 ANSWERS = ROOT / "docs" / "answers"
 CARDS = ROOT / "cards" / "interview_cards.html"
 
@@ -83,9 +84,21 @@ def main() -> None:
     if missing_figs:
         sys.exit(f"уроки ссылаются на несуществующие схемы: {missing_figs}")
 
+    tasks = load(CODE_TASKS) if CODE_TASKS.exists() else []
+    seen_tasks = set()
+    for task in tasks:
+        for field in ("id", "title", "track", "level", "minutes",
+                      "statement", "hints", "solution", "check", "notes"):
+            if not task.get(field):
+                sys.exit(f"задача {task.get('id')}: нет поля {field}")
+        if task["id"] in seen_tasks:
+            sys.exit(f"дубль задачи {task['id']}")
+        seen_tasks.add(task["id"])
+
     html = CARDS.read_text(encoding="utf-8")
     html = replace_block(html, "CARDS", bank, 0)
     html = replace_block(html, "LESSONS", lessons, 1)
+    html = replace_block(html, "CODETASKS", tasks, 1)
     html = replace_line_block(html, "DEEP", deep)
     html = replace_line_block(html, "FIGS", figures)
     CARDS.write_text(html, encoding="utf-8")
@@ -96,8 +109,8 @@ def main() -> None:
 
     covered = {i for lesson in lessons for i in lesson["cards"]}
     print(
-        f"вшито: {len(bank)} карточек, {len(lessons)} урок(ов), {len(deep)} разбор(ов); "
-        f"теорией покрыто {len(covered)} карточек из {len(bank)}"
+        f"вшито: {len(bank)} карточек, {len(lessons)} урок(ов), {len(deep)} разбор(ов), "
+        f"{len(tasks)} код-задач(и); теорией покрыто {len(covered)} карточек из {len(bank)}"
     )
 
 
