@@ -181,6 +181,9 @@ body{
 .sources p{margin:10px 0 0;font-size:13px;color:var(--muted);font-style:italic}
 .lesson a,.sources a{color:var(--accent);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 45%,transparent);text-underline-offset:2px;word-break:break-word}
 .lesson a:hover,.sources a:hover{text-decoration-color:var(--accent)}
+.searchrow{margin-bottom:12px}
+.searchrow input{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.searchrow input::placeholder{color:var(--muted)}
 .deepbox{margin:6px 0 14px;padding:14px 16px;background:var(--bg);border:1px solid var(--line);border-radius:10px}
 .deepbox.hidden{display:none}
 .deepbox .lesson p{font-size:14.5px}
@@ -203,6 +206,7 @@ body{
     <select id="trackSel" aria-label="Направление"></select>
     <select id="topicSel" aria-label="Тема"></select>
   </div>
+  <div class="searchrow"><input id="qSearch" type="search" placeholder="Поиск по вопросам и пунктам…" autocomplete="off"></div>
   <div id="view"></div>
 </div>
 
@@ -8146,9 +8150,18 @@ async function save(d){
 }
 
 /* ---------- состояние ---------- */
-let hist={};           // id -> {seen, actual, exp, gap}
+let hist={};           // id -> {seen, actual, exp, gap, box, t}
 let queue=[];
 let cur=null, phase="ask", conf=null, checked=new Set(), tab="deck";
+let qterm="";          // строка поиска по пулу
+let session=[];        // пройденные карточки текущего сеанса (для сводки каждые 10)
+
+/* Кривая забывания: ступени Лейтнера. Назвал >=80% пунктов — карточка уходит
+   на ступень выше и вернётся позже; <50% — падает на первую и вернётся завтра. */
+const BOX_DAYS=[0,1,3,7,21], DAY=864e5;
+const boxOf=h=>h.box??(h.actual>=.8?1:0);
+const dueAt=h=>(h.t??0)+BOX_DAYS[Math.min(boxOf(h),BOX_DAYS.length-1)]*DAY;
+const isDue=c=>!!hist[c.id]&&Date.now()>=dueAt(hist[c.id]);
 
 let track="all", topic="all";
 let reading=null;        // открытый урок
@@ -8157,14 +8170,19 @@ function pool(){
   if(activeLesson){const s=new Set(activeLesson.cards); return CARDS.filter(c=>s.has(c.id));}
   let p=CARDS;
   if(track!=="all"){p=p.filter(c=>c.track===track); if(topic!=="all")p=p.filter(c=>c.topic===topic);}
+  if(qterm){const s=qterm.toLowerCase(); p=p.filter(c=>(c.q+" "+c.points.join(" ")+" "+c.topic).toLowerCase().includes(s));}
   return p;
 }
 function buildQueue(){
   const p=pool();
-  const fresh=p.filter(c=>!hist[c.id]);
-  const weak=p.filter(c=>hist[c.id]&&hist[c.id].actual<.8).sort((a,b)=>hist[a.id].actual-hist[b.id].actual);
-  const done=p.filter(c=>hist[c.id]&&hist[c.id].actual>=.8);
-  queue=[...shuffle(fresh),...weak,...shuffle(done)];
+  /* Провал в текущем сеансе не должен зацикливать очередь: карточка, уже
+     пройденная сегодня, возвращается в конец, а не встаёт первой. */
+  const now=new Set(session.map(s=>s.id));
+  const due=p.filter(c=>isDue(c)&&!now.has(c.id)).sort((a,b)=>boxOf(hist[a.id])-boxOf(hist[b.id])||dueAt(hist[a.id])-dueAt(hist[b.id]));
+  const fresh=shuffle(p.filter(c=>!hist[c.id]));
+  const retry=p.filter(c=>isDue(c)&&now.has(c.id));
+  const rest=shuffle(p.filter(c=>hist[c.id]&&!isDue(c)));
+  queue=[...due,...fresh,...retry,...rest];
 }
 function left(list){return list.filter(c=>!hist[c.id]||hist[c.id].actual<.8).length}
 function fillTopics(){
@@ -8200,11 +8218,15 @@ const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&qu
 function render(){
   const p=pool();
   const seen=p.filter(c=>hist[c.id]).length;
+  const nowIds=new Set(session.map(s=>s.id));
+  const nDue=p.filter(c=>isDue(c)&&!nowIds.has(c.id)).length;
   rail.style.width=(seen/Math.max(p.length,1)*100)+"%";
-  counter.textContent=seen+" / "+p.length;
+  counter.textContent=(nDue?nDue+" к повторению · ":"")+seen+" / "+p.length;
   tabBtn.textContent = tab==="stats" ? "К карточкам" : "Разбор";
   theoryBtn.textContent = tab==="theory" ? "К карточкам" : "Теория";
-  document.querySelector(".selrow").style.display = (tab==="deck" && !activeLesson) ? "grid" : "none";
+  const onDeck = (tab==="deck" && !activeLesson);
+  document.querySelector(".selrow").style.display = onDeck ? "grid" : "none";
+  document.querySelector(".searchrow").style.display = onDeck ? "block" : "none";
   view.innerHTML = tab==="stats" ? stats() : tab==="theory" ? theory() : lessonBar()+deck();
   fillTopics();
   bind();
@@ -8212,9 +8234,12 @@ function render(){
 
 function deck(){
   if(!cur) cur=queue[0];
+  if(phase==="session") return sessionCard();
   if(!cur) return `<div class="card"><p class="empty">Карточки кончились. Открой разбор — там видно, где самооценка расходится с делом.</p></div>`;
+  const h0=hist[cur.id];
+  const badge=h0?`повтор · ступень ${Math.min(boxOf(h0),4)+1}/5`:"новая";
   const head=`<div class="card">
-    <div class="eyebrow">${esc(cur.topic)}<span class="dot"></span>${cur.points.length} пунктов</div>
+    <div class="eyebrow">${esc(cur.topic)}<span class="dot"></span>${cur.points.length} пунктов<span class="dot"></span>${badge}</div>
     <h1 class="q">${esc(cur.q)}</h1>`;
 
   if(phase==="ask"){
@@ -8251,6 +8276,27 @@ function deck(){
     <div id="deep" class="deepbox hidden"><div class="lesson">${md(DEEP[cur.id])}</div></div>`:""}
     <button class="primary" id="next">Следующий вопрос</button>
     <button class="ghost" id="again">Ещё раз этот</button></div>`;
+}
+
+function sessionCard(){
+  const last=session.slice(-10);
+  const named=Math.round(last.reduce((a,b)=>a+b.actual,0)/Math.max(last.length,1)*100);
+  const gap=last.reduce((a,b)=>a+b.gap,0)/Math.max(last.length,1);
+  const byTrack={};
+  last.forEach(s=>(byTrack[s.track]??=[]).push(s.actual));
+  const worst=Object.entries(byTrack).map(([t,v])=>[t,v.reduce((a,b)=>a+b,0)/v.length]).sort((a,b)=>a[1]-b[1]).slice(0,3);
+  const rows=worst.map(([t,v])=>`<div class="gaprow"><span class="n">${esc(t)}</span><span class="v" style="color:${v>=.8?'var(--ok)':v>=.5?'var(--warn)':'var(--miss)'}">${Math.round(v*100)}%</span></div>`).join("");
+  const msg=gap>.22?"Серия показала переоценку — эти карточки вернутся раньше остальных."
+        :gap<-.18?"Знаешь больше, чем ставишь себе. На интервью заявляй увереннее."
+        :"Самооценка держится честно — так и продолжай.";
+  return `<div class="card">
+    <div class="eyebrow">Серия из ${last.length}<span class="dot"></span>за сеанс ${session.length}</div>
+    <div class="big" style="color:${named>=80?'var(--ok)':named>=50?'var(--warn)':'var(--miss)'}">${named}%</div>
+    <div class="biglab">пунктов названо в этой серии</div>
+    <div class="gap" style="margin-top:18px">${rows}
+      <div class="verdict ${gap>.22?"over":gap<-.18?"under":"fair"}">${msg}</div></div>
+    <button class="primary" id="more10">Ещё серия</button>
+    <button class="ghost" id="toStats">Посмотреть разбор</button></div>`;
 }
 
 function stats(){
@@ -8354,13 +8400,21 @@ function bind(){
   });
   const d=document.getElementById("done"); if(d) d.onclick=async()=>{
     const actual=checked.size/cur.points.length, exp=CONF[conf].exp;
-    hist[cur.id]={seen:(hist[cur.id]?.seen||0)+1,actual,exp,gap:exp-actual};
+    const prev=hist[cur.id];
+    const b=prev?boxOf(prev):0;
+    const nb=actual>=.8?Math.min(b+1,4):(actual>=.5?b:0);
+    hist[cur.id]={seen:(prev?.seen||0)+1,actual,exp,gap:exp-actual,box:nb,t:Date.now()};
+    session.push({id:cur.id,track:cur.track,actual,gap:exp-actual});
     await save(hist); phase="result"; render();
   };
   const n=document.getElementById("next"); if(n) n.onclick=()=>{
     buildQueue(); const rest=queue.filter(c=>c.id!==cur.id);
-    cur=rest[0]||queue[0]; phase="ask"; conf=null; checked.clear(); render();
+    cur=rest[0]||queue[0];
+    phase=(session.length>0&&session.length%10===0)?"session":"ask";
+    conf=null; checked.clear(); render();
   };
+  const m10=document.getElementById("more10"); if(m10) m10.onclick=()=>{phase="ask";render();window.scrollTo(0,0)};
+  const ts2=document.getElementById("toStats"); if(ts2) ts2.onclick=()=>{tab="stats";phase="ask";render();window.scrollTo(0,0)};
   const a=document.getElementById("again"); if(a) a.onclick=()=>{phase="ask";conf=null;checked.clear();render()};
   const db=document.getElementById("deepbtn"); if(db) db.onclick=()=>{
     const box=document.getElementById("deep"); box.classList.toggle("hidden");
@@ -8371,8 +8425,16 @@ function bind(){
 tabBtn.onclick=()=>{tab=tab==="stats"?"deck":"stats";reading=null;render()};
 theoryBtn.onclick=()=>{tab=tab==="theory"?"deck":"theory";reading=null;render();window.scrollTo(0,0)};
 document.addEventListener("keydown",e=>{
+  if(e.target && e.target.tagName==="INPUT") return;
   if(phase==="ask"){const m={"1":"sure","2":"part","3":"no"}[e.key]; if(m){conf=m;phase="reveal";checked.clear();render()}}
+  if(e.key==="Enter"){
+    if(phase==="reveal") document.getElementById("done")?.click();
+    else if(phase==="result") document.getElementById("next")?.click();
+    else if(phase==="session") document.getElementById("more10")?.click();
+  }
 });
+const qInput=document.getElementById("qSearch");
+qInput.oninput=()=>{qterm=qInput.value.trim();buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
 
 (async()=>{hist=await load()||{};buildQueue();render()})();
 </script>
