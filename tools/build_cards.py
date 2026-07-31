@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BANK = ROOT / "banks" / "bank_full.json"
 LESSONS = ROOT / "banks" / "lessons.json"
+FIGURES = ROOT / "banks" / "figures.json"
 ANSWERS = ROOT / "docs" / "answers"
 CARDS = ROOT / "cards" / "interview_cards.html"
 
@@ -74,10 +75,19 @@ def main() -> None:
     if unknown_deep:
         sys.exit(f"в docs/answers есть разборы несуществующих карточек: {unknown_deep}")
 
+    figures = load(FIGURES) if FIGURES.exists() else {}
+    used_figs = {
+        m for lesson in lessons for m in re.findall(r"\{\{fig:(\w+)\}\}", lesson["body"])
+    }
+    missing_figs = sorted(used_figs - set(figures))
+    if missing_figs:
+        sys.exit(f"уроки ссылаются на несуществующие схемы: {missing_figs}")
+
     html = CARDS.read_text(encoding="utf-8")
     html = replace_block(html, "CARDS", bank, 0)
     html = replace_block(html, "LESSONS", lessons, 1)
     html = replace_line_block(html, "DEEP", deep)
+    html = replace_line_block(html, "FIGS", figures)
     CARDS.write_text(html, encoding="utf-8")
 
     missing_meta = [l["id"] for l in lessons if not (l.get("tldr") and l.get("sources") and l.get("minutes"))]
