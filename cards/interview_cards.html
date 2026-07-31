@@ -389,6 +389,17 @@ html[data-fs="xl"] .q{font-size:29px}
   .tabbtn{padding:6px 9px;font-size:11.5px}
   .counter{font-size:10px}
 }
+
+/* --- UX3: sticky CTA, clickable tracks, weak mode --- */
+@media(max-width:640px){
+  .card .primary{position:sticky;bottom:calc(env(safe-area-inset-bottom) + 10px);z-index:5}
+}
+.eyebrow{flex-wrap:wrap;row-gap:4px}
+.srow[data-tracklink]{cursor:pointer;border-radius:8px}
+.srow[data-tracklink]:hover .t{color:var(--accent)}
+.srow[data-tracklink]:hover .bar i{filter:brightness(1.1)}
+.srow .go{flex:0 0 auto;color:var(--muted);font-size:12px;opacity:.6}
+#weakBtn{margin-top:18px}
 </style>
 </head>
 <body>
@@ -10411,15 +10422,17 @@ function stats(){
   const totalDone=Object.values(byTrackAll).reduce((a,v)=>a+v.d,0);
   const trackRows=Object.entries(byTrackAll).sort((a,b)=>b[1].d/b[1].t-a[1].d/a[1].t).map(([t,v])=>{
     const pct=Math.round(v.d/v.t*100);
-    return `<div class="srow"><span class="t">${esc(t)}</span>
+    return `<div class="srow" data-tracklink="${esc(t)}" role="button" tabindex="0" title="Тренировать этот трек"><span class="t">${esc(t)}</span>
       <span class="bar"><i style="width:${pct}%;background:${pct===100?'var(--ok)':'var(--accent)'}"></i></span>
-      <span class="p" style="width:70px;white-space:nowrap">${v.d}/${v.t}</span></div>`;
+      <span class="p" style="width:70px;white-space:nowrap">${v.d}/${v.t}</span><span class="go">›</span></div>`;
   }).join("");
   return `<div class="card">
     <div class="eyebrow">Прогресс</div>
     <div class="big" style="color:var(--accent)">${Math.round(totalDone/CARDS.length*100)}%</div>
     <div class="biglab">закрыто ${totalDone} из ${CARDS.length} карточек (названо ≥80% пунктов)</div>
     <div style="margin-top:18px">${trackRows}</div>
+    ${(()=>{const weak=CARDS.filter(c=>hist[c.id]&&hist[c.id].actual<.8);
+      return weak.length?`<button class="primary" id="weakBtn">🔁 Работа над ошибками · ${weak.length} карт.</button>`:"";})()}
     <div class="eyebrow" style="margin-top:30px">Разрыв самооценки</div>
     <div class="big" style="color:${avg>.22?'var(--miss)':avg>.08?'var(--warn)':'var(--ok)'}">${avg>0?"+":""}${Math.round(avg*100)}%</div>
     <div class="biglab">насколько в среднем переоцениваешь себя</div>
@@ -10467,7 +10480,8 @@ function md(src){
 }
 function lessonBar(){
   if(!activeLesson) return "";
-  return `<div class="lessonbar"><span>Тест по уроку · ${esc(activeLesson.title)}</span>
+  const label=activeLesson.id==="__weak"?esc(activeLesson.title):"Тест по уроку · "+esc(activeLesson.title);
+  return `<div class="lessonbar"><span>${label}</span>
     <button id="exitLesson">ко всем карточкам</button></div>`;
 }
 function theory(){
@@ -10640,6 +10654,19 @@ function bind(){
   const el=document.getElementById("exitLesson"); if(el) el.onclick=()=>{
     activeLesson=null; buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render();
   };
+  const startDeck=()=>{exam=null;buildQueue();cur=null;phase="ask";conf=null;checked.clear();render();window.scrollTo(0,0);};
+  document.querySelectorAll("[data-tracklink]").forEach(r=>{
+    const go=()=>{track=r.dataset.tracklink;topic="all";activeLesson=null;tab="deck";startDeck();};
+    r.onclick=go;
+    r.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}};
+  });
+  const wb=document.getElementById("weakBtn"); if(wb) wb.onclick=()=>{
+    const weak=CARDS.filter(c=>hist[c.id]&&hist[c.id].actual<.8)
+      .sort((a,b)=>hist[a.id].actual-hist[b.id].actual);
+    if(!weak.length) return;
+    activeLesson={id:"__weak",title:"🔁 Работа над ошибками",cards:weak.map(c=>c.id)};
+    tab="deck"; startDeck();
+  };
   document.querySelectorAll("[data-conf]").forEach(b=>b.onclick=()=>{conf=b.dataset.conf;phase="reveal";checked.clear();render()});
   document.querySelectorAll(".pt").forEach(b=>b.onclick=()=>{
     const i=+b.dataset.i; checked.has(i)?checked.delete(i):checked.add(i);
@@ -10654,6 +10681,7 @@ function bind(){
     hist[cur.id]={seen:(prev?.seen||0)+1,actual,exp,gap:exp-actual,box:nb,t:Date.now()};
     session.push({id:cur.id,track:cur.track,actual,gap:exp-actual});
     bumpToday();
+    try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}
     await save(hist);
     if(exam){
       exam.log.push({id:cur.id,track:cur.track,q:cur.q,actual});
