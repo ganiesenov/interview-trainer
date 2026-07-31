@@ -69,7 +69,7 @@ b += f"<line class='ax' x1='{L}' y1='{BOT}' x2='{R}' y2='{BOT}'/>"
 b += f"<line class='ax' x1='{L}' y1='{TOP}' x2='{L}' y2='{BOT}'/>"
 y05 = ys(0.05)
 b += f"<line x1='{L}' y1='{y05:.1f}' x2='{R}' y2='{y05:.1f}' stroke='var(--miss)' stroke-width='1.5' stroke-dasharray='5 4'/>"
-b += txt(R, y05 - 6, "p = 0.05", "m", "end")
+b += txt(L + 6, y05 - 6, "p = 0.05", "m")
 crossed = [i for i, p in enumerate(pvals) if p < 0.05]
 b += path([(xs(i), ys(p)) for i, p in enumerate(pvals)])
 for i in crossed[:1]:
@@ -96,9 +96,13 @@ for icc, col in zip(iccs, cols):
         y = BOT - (BOT - TOP) * (de - 1) / (demax - 1)
         pts.append((x, y))
     b += path(pts, "a", f"style='stroke:{col}'")
-b += txt(R - 4, TOP + 12, "ICC=0.2: DE≈41 — выборка нужна в 41 раз больше", "m", "end")
-b += txt(R - 4, TOP + 74, "ICC=0.05: DE≈11", "m", "end")
-b += txt(R - 4, BOT - 26, "ICC=0.01: DE≈3", "m", "end")
+b += f"<rect x='{L+8}' y='{TOP+2}' width='260' height='52' rx='6' fill='var(--bg)' opacity='.75'/>"
+b += f"<line x1='{L+16}' y1='{TOP+12}' x2='{L+34}' y2='{TOP+12}' stroke='var(--miss)' stroke-width='2'/>"
+b += txt(L + 40, TOP + 16, "ICC=0.2: DE≈41 — выборка ×41", "m")
+b += f"<line x1='{L+16}' y1='{TOP+28}' x2='{L+34}' y2='{TOP+28}' stroke='var(--accent)' stroke-width='2'/>"
+b += txt(L + 40, TOP + 32, "ICC=0.05: DE≈11", "m")
+b += f"<line x1='{L+16}' y1='{TOP+44}' x2='{L+34}' y2='{TOP+44}' stroke='var(--ok)' stroke-width='2'/>"
+b += txt(L + 40, TOP + 48, "ICC=0.01: DE≈3", "m")
 b += txt((L + R) / 2, BOT + 16, "размер кластера m →", "m", "middle")
 b += txt(8, H - 6, "Мощность задаёт ЧИСЛО КЛАСТЕРОВ: город на миллион пользователей — всё равно одно наблюдение.")
 figs["design_effect"] = svg(W, H, "Design effect", b)
