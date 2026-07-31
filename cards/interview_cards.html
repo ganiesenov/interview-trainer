@@ -20,7 +20,28 @@
   --warn:#C97A16;
   --miss:#B23A48;
   --ok:#1E7A5E;
+  --tint-warn:#FDF6EC; --deep-warn:#7A4A0B;
+  --tint-ok:#F1F8F5;   --deep-ok:#15563F;
+  --tint-info:#F0F3FD; --deep-info:#1E357F;
+  --shadow1:rgba(16,24,43,.04); --shadow2:rgba(16,24,43,.4);
   --r:14px;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0E131C;
+  --surface:#161D2A;
+  --ink:#E7EDF6;
+  --muted:#8C97AA;
+  --line:#28334A;
+  --accent:#8AA2FF;
+  --warn:#DFA65C;
+  --miss:#E27E8B;
+  --ok:#5CC29E;
+  --tint-warn:#2A2113; --deep-warn:#E8C289;
+  --tint-ok:#132420;   --deep-ok:#93DCC0;
+  --tint-info:#1A2340; --deep-info:#B3C3FF;
+  --shadow1:rgba(0,0,0,.25); --shadow2:rgba(0,0,0,.55);
+  color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -66,7 +87,7 @@ body{
 .card{
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
   padding:22px 20px;flex:1;display:flex;flex-direction:column;
-  box-shadow:0 1px 2px rgba(16,24,43,.04),0 8px 24px -18px rgba(16,24,43,.4);
+  box-shadow:0 1px 2px var(--shadow1),0 8px 24px -18px var(--shadow2);
 }
 .eyebrow{
   font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
@@ -128,9 +149,9 @@ body{
 .gaprow .n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;flex:1}
 .gaprow .v{font-family:"IBM Plex Mono",monospace;font-size:15px;font-weight:500}
 .verdict{padding:14px 15px;font-size:14.5px;line-height:1.5;border-top:1px solid var(--line)}
-.verdict.over{background:#FDF6EC;color:#7A4A0B}
-.verdict.fair{background:#F1F8F5;color:#15563F}
-.verdict.under{background:#F0F3FD;color:#1E357F}
+.verdict.over{background:var(--tint-warn);color:var(--deep-warn)}
+.verdict.fair{background:var(--tint-ok);color:var(--deep-ok)}
+.verdict.under{background:var(--tint-info);color:var(--deep-info)}
 
 .primary{
   margin-top:16px;width:100%;background:var(--accent);color:#fff;border:0;border-radius:10px;
@@ -197,6 +218,7 @@ body{
     <div class="brand">Карточки · LLM/NLP</div>
     <div style="display:flex;align-items:center;gap:10px">
       <div class="counter" id="counter"></div>
+      <button class="tabbtn" id="themeBtn" title="Тема" aria-label="Переключить тему">◐</button>
       <button class="tabbtn" id="theoryBtn">Теория</button>
       <button class="tabbtn" id="tabBtn">Разбор</button>
     </div>
@@ -8137,6 +8159,15 @@ const CONF = {sure:{label:"Знаю уверенно",exp:1.0,k:"1"},part:{label
 
 /* ---------- хранилище: артефакт → localStorage → память ---------- */
 const KEY="cards_v1";
+const TKEY="cards_theme";
+function applyTheme(){
+  const saved=(()=>{try{return localStorage.getItem(TKEY)}catch(e){return null}})();
+  const dark=saved?saved==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme=dark?"dark":"light";
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content=dark?"#0E131C":"#EDF0F4";
+}
+applyTheme();
 let mem=null;
 async function load(){
   try{ if(window.storage){const r=await window.storage.get(KEY); return r?JSON.parse(r.value):{}} }catch(e){}
@@ -8301,7 +8332,9 @@ function sessionCard(){
 
 function stats(){
   const ids=Object.keys(hist);
-  if(!ids.length) return `<div class="card"><p class="empty">Пока нечего разбирать. Пройди пять-шесть карточек, и здесь появится, где ты себя переоцениваешь.</p></div>`;
+  if(!ids.length) return `<div class="card"><p class="empty">Пока нечего разбирать. Пройди пять-шесть карточек, и здесь появится, где ты себя переоцениваешь.</p>
+    <button class="ghost" id="impBtn" style="margin-top:14px">Импорт прогресса с другого устройства</button>
+    <input type="file" id="impFile" accept="application/json" style="display:none"></div>`;
   const gaps=ids.map(i=>hist[i].gap);
   const avg=gaps.reduce((a,b)=>a+b,0)/gaps.length;
   const byTopic={};
@@ -8319,7 +8352,12 @@ function stats(){
     <div class="biglab">насколько в среднем переоцениваешь себя</div>
     <div style="margin-top:22px">${rows}</div>
     <p class="hint" style="margin-top:18px">Полоска — доля реально названных пунктов. Красный цвет значит, что по теме ты уверен сильнее, чем отвечаешь.</p>
-    <button class="ghost" id="reset" style="margin-top:14px">Сбросить прогресс</button></div>`;
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="ghost" id="expBtn" style="margin-top:0;flex:1">Экспорт прогресса</button>
+      <button class="ghost" id="impBtn" style="margin-top:0;flex:1">Импорт</button>
+    </div>
+    <input type="file" id="impFile" accept="application/json" style="display:none">
+    <button class="ghost" id="reset" style="margin-top:10px">Сбросить прогресс</button></div>`;
 }
 const avgOf=v=>v.reduce((a,b)=>a+b.gap,0)/v.length;
 const avgOf2=v=>v.reduce((a,b)=>a+b.actual,0)/v.length;
@@ -8421,6 +8459,39 @@ function bind(){
     db.textContent=box.classList.contains("hidden")?"📖 Полный разбор — как отвечать на интервью":"Свернуть разбор";
   };
   const r=document.getElementById("reset"); if(r) r.onclick=async()=>{hist={};await save(hist);buildQueue();cur=null;phase="ask";tab="deck";render()};
+  const ex=document.getElementById("expBtn"); if(ex) ex.onclick=()=>{
+    const payload={version:1,exported:new Date().toISOString(),hist,lessons:readDone()};
+    const blob=new Blob([JSON.stringify(payload)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="cards_progress_"+new Date().toISOString().slice(0,10)+".json";
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  const im=document.getElementById("impBtn"), fi=document.getElementById("impFile");
+  if(im&&fi){ im.onclick=()=>fi.click();
+    fi.onchange=async()=>{
+      const f=fi.files[0]; if(!f) return;
+      try{
+        const data=JSON.parse(await f.text());
+        const incoming=data.hist||{};
+        let merged=0;
+        /* Слияние: для каждой карточки побеждает более свежая запись. */
+        for(const id in incoming){
+          const a0=hist[id], b0=incoming[id];
+          if(!a0||(b0.t??0)>=(a0.t??0)){hist[id]=b0;merged++;}
+        }
+        const lin=data.lessons||{};
+        try{
+          const cur0=readDone();
+          for(const id in lin) if(!cur0[id]||lin[id]>cur0[id]) cur0[id]=lin[id];
+          localStorage.setItem(LKEY,JSON.stringify(cur0));
+        }catch(e){}
+        await save(hist); buildQueue(); render();
+        alert("Импортировано записей: "+merged+" из "+Object.keys(incoming).length);
+      }catch(e){ alert("Не удалось прочитать файл: "+e.message); }
+      fi.value="";
+    };
+  }
 }
 tabBtn.onclick=()=>{tab=tab==="stats"?"deck":"stats";reading=null;render()};
 theoryBtn.onclick=()=>{tab=tab==="theory"?"deck":"theory";reading=null;render();window.scrollTo(0,0)};
@@ -8435,6 +8506,11 @@ document.addEventListener("keydown",e=>{
 });
 const qInput=document.getElementById("qSearch");
 qInput.oninput=()=>{qterm=qInput.value.trim();buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
+document.getElementById("themeBtn").onclick=()=>{
+  const now=document.documentElement.dataset.theme==="dark"?"light":"dark";
+  try{localStorage.setItem(TKEY,now)}catch(e){}
+  applyTheme();
+};
 
 (async()=>{hist=await load()||{};buildQueue();render()})();
 </script>
