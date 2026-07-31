@@ -400,6 +400,26 @@ html[data-fs="xl"] .q{font-size:29px}
 .srow[data-tracklink]:hover .bar i{filter:brightness(1.1)}
 .srow .go{flex:0 0 auto;color:var(--muted);font-size:12px;opacity:.6}
 #weakBtn{margin-top:18px}
+
+/* --- UX4: skip, learn phase, sheet pickers --- */
+.pt.ro{cursor:default}
+.pt.ro .box{border-style:dashed;opacity:.55}
+#skip{margin-top:10px}
+.selbtn{width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;font-family:"Golos Text",sans-serif;font-size:13px;font-weight:500;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;cursor:pointer;box-shadow:0 1px 2px var(--shadow1);text-align:left}
+.selbtn .sv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.selbtn .chev{color:var(--muted);flex:0 0 auto;font-size:9px}
+.selbtn:disabled{opacity:.5;cursor:default}
+.selbtn:hover:not(:disabled){border-color:var(--accent)}
+.sheetback{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.38);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center}
+.sheetback.hidden{display:none}
+.sheet{width:100%;max-height:72vh;overflow:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:14px 12px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.3)}
+@media(min-width:640px){.sheetback{align-items:center;padding:20px}.sheet{max-width:460px;border-radius:20px;max-height:80vh}}
+.sheet .sh{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:6px 6px 10px}
+.shopt{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;border-radius:12px;padding:12px 10px;font:inherit;font-size:14.5px;color:var(--ink);cursor:pointer}
+.shopt:hover{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.shopt[data-cur="1"]{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent);font-weight:600}
+.shopt .tick{width:16px;flex:0 0 auto;color:var(--accent);font-size:13px}
+.shopt .cnt{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -434,13 +454,14 @@ html[data-fs="xl"] .q{font-size:29px}
   </div>
   <div class="rail"><i id="rail"></i></div>
   <div class="selrow">
-    <select id="trackSel" aria-label="Направление"></select>
-    <select id="topicSel" aria-label="Тема"></select>
+    <button class="selbtn" id="trackBtn" aria-haspopup="dialog" aria-label="Направление"></button>
+    <button class="selbtn" id="topicBtn" aria-haspopup="dialog" aria-label="Тема"></button>
   </div>
   <div class="searchrow"><input id="qSearch" type="search" placeholder="Поиск по вопросам и пунктам…" autocomplete="off"></div>
   <div class="examrow"><button id="examBtn">🎓 Экзамен: 20 вопросов без эталона</button></div>
   <div id="view"></div>
   <button class="fab" id="fabTop" aria-label="Наверх">↑</button>
+  <div class="sheetback hidden" id="sheetBack"><div class="sheet" id="sheet" role="dialog"></div></div>
 </div>
 
 <script>
@@ -10248,26 +10269,47 @@ function buildQueue(){
   queue=[...due,...fresh,...retry,...rest];
 }
 function left(list){return list.filter(c=>!hist[c.id]||hist[c.id].actual<.8).length}
+function tracksMap(){const m={};CARDS.forEach(c=>(m[c.track]??=[]).push(c));return m}
 function fillTopics(){
-  const ts=document.getElementById("trackSel"), qs=document.getElementById("topicSel");
-  const tracks={};
-  CARDS.forEach(c=>(tracks[c.track]??=[]).push(c));
-  ts.innerHTML=[`<option value="all">ВПЕРЕМЕШКУ · ${CARDS.length} · ост. ${left(CARDS)}</option>`]
-    .concat(Object.keys(tracks).sort().map(t=>`<option value="${esc(t)}">${esc(t.toUpperCase())} · ${tracks[t].length} · ост. ${left(tracks[t])}</option>`)).join("");
-  ts.value=track;
-
-  if(track==="all"){qs.disabled=true;qs.innerHTML='<option>случайный вопрос</option>';}
+  const tb=document.getElementById("trackBtn"), qb=document.getElementById("topicBtn");
+  if(!tb) return;
+  const tracks=tracksMap();
+  const tl=track==="all"?`Вперемешку · ${CARDS.length}`:`${track} · ${tracks[track].length}`;
+  tb.innerHTML=`<span class="sv">${esc(tl)}</span><span class="chev">▼</span>`;
+  if(track==="all"){qb.disabled=true;qb.innerHTML=`<span class="sv">случайная тема</span><span class="chev">▼</span>`;}
   else{
-    qs.disabled=false;
-    const sub={};
-    tracks[track].forEach(c=>(sub[c.topic]??=[]).push(c));
-    qs.innerHTML=[`<option value="all">ВСЕ ТЕМЫ · ост. ${left(tracks[track])}</option>`]
-      .concat(Object.keys(sub).sort().map(t=>`<option value="${esc(t)}">${esc(t.toUpperCase())} · ${sub[t].length}</option>`)).join("");
-    qs.value=topic;
+    qb.disabled=false;
+    qb.innerHTML=`<span class="sv">${esc(topic==="all"?"Все темы":topic)}</span><span class="chev">▼</span>`;
   }
-  const reset=()=>{exam=null;buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
-  ts.onchange=()=>{track=ts.value;topic="all";reset()};
-  qs.onchange=()=>{topic=qs.value;reset()};
+  tb.onclick=()=>openSheet("track");
+  qb.onclick=()=>openSheet("topic");
+}
+function sheetOpt(v,on,name,n,lft){
+  return `<button class="shopt" data-v="${esc(v)}" data-cur="${on?1:0}">
+    <span class="tick">${on?"✓":""}</span><span>${esc(name)}</span>
+    <span class="cnt">${n} · ост. ${lft}</span></button>`;
+}
+function openSheet(kind){
+  const back=document.getElementById("sheetBack"), sh=document.getElementById("sheet");
+  const tracks=tracksMap();
+  let rows;
+  if(kind==="track"){
+    rows=`<div class="sh">Направление</div>`+sheetOpt("all",track==="all","Вперемешку",CARDS.length,left(CARDS));
+    Object.keys(tracks).sort().forEach(t=>rows+=sheetOpt(t,track===t,t,tracks[t].length,left(tracks[t])));
+  }else{
+    const sub={};
+    (tracks[track]||[]).forEach(c=>(sub[c.topic]??=[]).push(c));
+    rows=`<div class="sh">Тема · ${esc(track)}</div>`+sheetOpt("all",topic==="all","Все темы",(tracks[track]||[]).length,left(tracks[track]||[]));
+    Object.keys(sub).sort().forEach(t=>rows+=sheetOpt(t,topic===t,t,sub[t].length,left(sub[t])));
+  }
+  sh.innerHTML=rows;
+  sh.querySelectorAll(".shopt").forEach(b=>b.onclick=()=>{
+    if(kind==="track"){track=b.dataset.v;topic="all";}else{topic=b.dataset.v;}
+    back.classList.add("hidden");
+    exam=null;buildQueue();cur=null;phase="ask";conf=null;checked.clear();render();
+  });
+  back.classList.remove("hidden");
+  const on=sh.querySelector('[data-cur="1"]'); if(on) on.scrollIntoView({block:"center"});
 }
 function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 
@@ -10320,7 +10362,17 @@ function deck(){
     return head+`<p class="hint">Ответь про себя вслух целиком, и только потом оценивай — иначе замер не сработает.</p>
       <div class="conf"><div class="lab">Насколько уверен</div>
         ${Object.entries(CONF).map(([k,v])=>`<button class="cbtn" data-conf="${k}">${v.label}<span class="k">${v.k}</span></button>`).join("")}
-      </div><p class="kbdhint">клавиши: 1 · 2 · 3 — самооценка, Enter — дальше</p></div>`;
+      </div>${exam?"":`<button class="ghost" id="skip">Пропустить — спрошу позже</button>`}<p class="kbdhint">клавиши: 1 · 2 · 3 — самооценка, 0 — пропустить, Enter — дальше</p></div>`;
+  }
+
+  if(phase==="learn"){
+    const ro=cur.points.map((p,i)=>`<div class="pt ro" style="animation-delay:${i*45}ms">
+      <span class="box"></span><span class="txt">${esc(p)}</span></div>`).join("");
+    return head+`<p class="hint">Не страшно — прочитай, что должно прозвучать. Карточка вернётся завтра.</p>
+      <div class="points">${ro}</div>
+      <div class="refbox"><b>Эталон</b>${esc(cur.ref)}</div>
+      ${LESSON_OF[cur.id]&&!activeLesson?`<button class="ghost" id="lessonlink" data-lid="${LESSON_OF[cur.id]}">📚 Урок по теме: ${esc((LESSONS.find(x=>x.id===LESSON_OF[cur.id])||{title:""}).title)}</button>`:""}
+      <button class="primary" id="learned">Понятно · дальше</button></div>`;
   }
 
   const list=cur.points.map((p,i)=>`<button class="pt" data-i="${i}" data-on="${checked.has(i)?1:0}" style="animation-delay:${i*45}ms">
@@ -10667,7 +10719,7 @@ function bind(){
     activeLesson={id:"__weak",title:"🔁 Работа над ошибками",cards:weak.map(c=>c.id)};
     tab="deck"; startDeck();
   };
-  document.querySelectorAll("[data-conf]").forEach(b=>b.onclick=()=>{conf=b.dataset.conf;phase="reveal";checked.clear();render()});
+  document.querySelectorAll("[data-conf]").forEach(b=>b.onclick=()=>{conf=b.dataset.conf;phase=conf==="no"?"learn":"reveal";checked.clear();render();window.scrollTo(0,0)});
   document.querySelectorAll(".pt").forEach(b=>b.onclick=()=>{
     const i=+b.dataset.i; checked.has(i)?checked.delete(i):checked.add(i);
     if(phase==="reveal"){const d=document.getElementById("done"); b.dataset.on=checked.has(i)?1:0; d.textContent=`Готово · отмечено ${checked.size} из ${cur.points.length}`;}
@@ -10694,6 +10746,35 @@ function bind(){
       conf=null; checked.clear(); render(); window.scrollTo(0,0); return;
     }
     phase="result"; render();
+  };
+  const sk=document.getElementById("skip"); if(sk) sk.onclick=()=>{
+    const i=queue.findIndex(c=>c.id===cur.id);
+    if(i>-1) queue.push(queue.splice(i,1)[0]);
+    cur=queue.find(c=>c.id!==cur.id)||queue[0]||null;
+    phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
+  };
+  const lb=document.getElementById("learned"); if(lb) lb.onclick=async()=>{
+    const actual=0, exp=CONF[conf].exp;
+    const prev=hist[cur.id];
+    hist[cur.id]={seen:(prev?.seen||0)+1,actual,exp,gap:exp-actual,box:0,t:Date.now()};
+    session.push({id:cur.id,track:cur.track,actual,gap:exp-actual});
+    bumpToday();
+    try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}
+    await save(hist);
+    if(exam){
+      exam.log.push({id:cur.id,track:cur.track,q:cur.q,actual});
+      if(exam.log.length>=exam.total){phase="examdone";}
+      else{
+        const done_ids=new Set(exam.log.map(s=>s.id));
+        cur=queue.find(c=>!done_ids.has(c.id))||null;
+        phase=cur?"ask":"examdone";
+      }
+      conf=null; checked.clear(); render(); window.scrollTo(0,0); return;
+    }
+    buildQueue(); const rest=queue.filter(c=>c.id!==cur.id);
+    cur=rest[0]||queue[0];
+    phase=(session.length>0&&session.length%10===0)?"session":"ask";
+    conf=null; checked.clear(); render(); window.scrollTo(0,0);
   };
   const n=document.getElementById("next"); if(n) n.onclick=()=>{
     buildQueue(); const rest=queue.filter(c=>c.id!==cur.id);
@@ -10766,9 +10847,15 @@ theoryBtn.onclick=()=>{tab=tab==="theory"?"deck":"theory";reading=null;codeTask=
 document.getElementById("codeBtn").onclick=()=>{tab=tab==="code"?"deck":"code";reading=null;codeTask=null;render();window.scrollTo(0,0);pushNav()};
 document.addEventListener("keydown",e=>{
   if(e.target && e.target.tagName==="INPUT") return;
-  if(phase==="ask"){const m={"1":"sure","2":"part","3":"no"}[e.key]; if(m){conf=m;phase="reveal";checked.clear();render()}}
+  if(e.key==="Escape"){document.getElementById("sheetBack")?.classList.add("hidden");}
+  if(phase==="ask"){
+    const m={"1":"sure","2":"part","3":"no"}[e.key];
+    if(m){conf=m;phase=m==="no"?"learn":"reveal";checked.clear();render();window.scrollTo(0,0)}
+    if(e.key==="0") document.getElementById("skip")?.click();
+  }
   if(e.key==="Enter"){
     if(phase==="reveal") document.getElementById("done")?.click();
+    else if(phase==="learn") document.getElementById("learned")?.click();
     else if(phase==="result") document.getElementById("next")?.click();
     else if(phase==="session") document.getElementById("more10")?.click();
     else if(phase==="examdone") document.getElementById("examDone2")?.click();
@@ -10816,6 +10903,8 @@ if(setPop){
   gs.onchange=()=>{try{localStorage.setItem(GOALKEY,gs.value)}catch(e){} updateGoalPill();};
 }
 fsApply(); updateGoalPill();
+const shb=document.getElementById("sheetBack");
+if(shb) shb.onclick=e=>{if(e.target===shb) shb.classList.add("hidden");};
 
 (async()=>{hist=await load()||{};buildQueue();render();try{history.replaceState({tab,reading:null},"")}catch(e){}})();
 </script>
