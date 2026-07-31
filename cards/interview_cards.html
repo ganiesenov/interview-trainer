@@ -216,6 +216,11 @@ body{
 .media a:hover{text-decoration-color:var(--accent)}
 .backbtn{align-self:flex-start;background:var(--bg);border:1px solid var(--line);color:var(--accent);font:inherit;font-size:13.5px;font-weight:600;border-radius:999px;padding:8px 16px;cursor:pointer;margin-bottom:14px}
 .backbtn:hover{border-color:var(--accent)}
+.examrow{margin-bottom:12px}
+.examrow button{width:100%;background:var(--surface);border:1.5px dashed var(--accent);color:var(--accent);font:inherit;font-size:13.5px;font-weight:600;border-radius:10px;padding:10px;cursor:pointer}
+.examrow button:hover{border-style:solid}
+.examfail{margin:10px 0 0;padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.examfail li{font-size:13.5px;line-height:1.5;margin-bottom:6px;color:var(--muted)}
 .lblock{margin-top:30px}
 .lblock:first-of-type{margin-top:20px}
 .lblockhead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
@@ -279,6 +284,7 @@ body{
     <select id="topicSel" aria-label="Тема"></select>
   </div>
   <div class="searchrow"><input id="qSearch" type="search" placeholder="Поиск по вопросам и пунктам…" autocomplete="off"></div>
+  <div class="examrow"><button id="examBtn">🎓 Экзамен: 20 вопросов без эталона</button></div>
   <div id="view"></div>
 </div>
 
@@ -8803,6 +8809,7 @@ let queue=[];
 let cur=null, phase="ask", conf=null, checked=new Set(), tab="deck";
 let qterm="";          // строка поиска по пулу
 let session=[];        // пройденные карточки текущего сеанса (для сводки каждые 10)
+let exam=null;         // {total, log:[{id,track,q,actual}]} — экзамен без эталона
 
 /* Кривая забывания: ступени Лейтнера. Назвал >=80% пунктов — карточка уходит
    на ступень выше и вернётся позже; <50% — падает на первую и вернётся завтра. */
@@ -8850,7 +8857,7 @@ function fillTopics(){
       .concat(Object.keys(sub).sort().map(t=>`<option value="${esc(t)}">${esc(t.toUpperCase())} · ${sub[t].length}</option>`)).join("");
     qs.value=topic;
   }
-  const reset=()=>{buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
+  const reset=()=>{exam=null;buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
   ts.onchange=()=>{track=ts.value;topic="all";reset()};
   qs.onchange=()=>{topic=qs.value;reset()};
 }
@@ -8868,13 +8875,21 @@ function render(){
   const seen=p.filter(c=>hist[c.id]).length;
   const nowIds=new Set(session.map(s=>s.id));
   const nDue=p.filter(c=>isDue(c)&&!nowIds.has(c.id)).length;
-  rail.style.width=(seen/Math.max(p.length,1)*100)+"%";
-  counter.textContent=(nDue?nDue+" к повторению · ":"")+seen+" / "+p.length;
+  if(exam){
+    rail.style.width=(exam.log.length/exam.total*100)+"%";
+    counter.textContent="экзамен · "+exam.log.length+" / "+exam.total;
+  } else {
+    rail.style.width=(seen/Math.max(p.length,1)*100)+"%";
+    counter.textContent=(nDue?nDue+" к повторению · ":"")+seen+" / "+p.length;
+  }
+  const eb=document.getElementById("examBtn");
+  if(eb) eb.textContent=exam?"✕ Прервать экзамен ("+exam.log.length+" / "+exam.total+")":"🎓 Экзамен: 20 вопросов без эталона";
   tabBtn.textContent = tab==="stats" ? "К карточкам" : "Разбор";
   theoryBtn.textContent = tab==="theory" ? "К карточкам" : "Теория";
   const onDeck = (tab==="deck" && !activeLesson);
   document.querySelector(".selrow").style.display = onDeck ? "grid" : "none";
   document.querySelector(".searchrow").style.display = onDeck ? "block" : "none";
+  document.querySelector(".examrow").style.display = (onDeck && phase!=="examdone") ? "block" : "none";
   view.innerHTML = tab==="stats" ? stats() : tab==="theory" ? theory() : lessonBar()+deck();
   fillTopics();
   bind();
@@ -8882,7 +8897,8 @@ function render(){
 
 function deck(){
   if(!cur) cur=queue[0];
-  if(phase==="session") return sessionCard();
+  if(phase==="examdone") return examCard();
+  if(phase==="session" && !exam) return sessionCard();
   if(!cur) return `<div class="card"><p class="empty">Карточки кончились. Открой разбор — там видно, где самооценка расходится с делом.</p></div>`;
   const h0=hist[cur.id];
   const badge=h0?`повтор · ступень ${Math.min(boxOf(h0),4)+1}/5`:"новая";
@@ -8924,6 +8940,32 @@ function deck(){
     <div id="deep" class="deepbox hidden"><div class="lesson">${md(DEEP[cur.id])}</div></div>`:""}
     <button class="primary" id="next">Следующий вопрос</button>
     <button class="ghost" id="again">Ещё раз этот</button></div>`;
+}
+
+function examCard(){
+  const log=exam.log;
+  const named=Math.round(log.reduce((a,b)=>a+b.actual,0)/Math.max(log.length,1)*100);
+  const byTrack={};
+  log.forEach(s=>(byTrack[s.track]??=[]).push(s.actual));
+  const rows=Object.entries(byTrack).map(([t,v])=>[t,v.reduce((a,b)=>a+b,0)/v.length,v.length])
+    .sort((a,b)=>a[1]-b[1])
+    .map(([t,v,n])=>`<div class="gaprow"><span class="n">${esc(t)} · ${n}</span><span class="v" style="color:${v>=.8?'var(--ok)':v>=.5?'var(--warn)':'var(--miss)'}">${Math.round(v*100)}%</span></div>`).join("");
+  const failed=log.filter(s=>s.actual<0.5);
+  const failList=failed.length
+    ? `<div class="examfail"><b class="m" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--miss)">Провалено (&lt;50% пунктов)</b>
+       <ul style="margin:8px 0 0;padding-left:18px">${failed.map(s=>`<li>${esc(s.q)}</li>`).join("")}</ul></div>` : "";
+  const verdict=named>=80?"Уровень интервью: держишь. Пройди провальные — и повышай сложность трека."
+    :named>=55?"Середина: скелет знаний есть, добивай пробелы разбором ошибок."
+    :"Честный сигнал: вернись в теорию по худшим трекам, потом пересдай.";
+  return `<div class="card">
+    <div class="eyebrow">Экзамен завершён<span class="dot"></span>${log.length} вопросов</div>
+    <div class="big" style="color:${named>=80?'var(--ok)':named>=55?'var(--warn)':'var(--miss)'}">${named}%</div>
+    <div class="biglab">пунктов эталона названо</div>
+    <div class="gap" style="margin-top:18px">${rows}
+      <div class="verdict ${named>=80?"fair":named>=55?"over":"over"}">${verdict}</div></div>
+    ${failList}
+    ${failed.length?`<button class="primary" id="examReview">Разобрать ошибки (${failed.length})</button>`:""}
+    <button class="ghost" id="examDone2">Готово</button></div>`;
 }
 
 function sessionCard(){
@@ -9088,7 +9130,18 @@ function bind(){
     const nb=actual>=.8?Math.min(b+1,4):(actual>=.5?b:0);
     hist[cur.id]={seen:(prev?.seen||0)+1,actual,exp,gap:exp-actual,box:nb,t:Date.now()};
     session.push({id:cur.id,track:cur.track,actual,gap:exp-actual});
-    await save(hist); phase="result"; render();
+    await save(hist);
+    if(exam){
+      exam.log.push({id:cur.id,track:cur.track,q:cur.q,actual});
+      if(exam.log.length>=exam.total){phase="examdone";}
+      else{
+        const done_ids=new Set(exam.log.map(s=>s.id));
+        cur=queue.find(c=>!done_ids.has(c.id))||null;
+        phase=cur?"ask":"examdone";
+      }
+      conf=null; checked.clear(); render(); window.scrollTo(0,0); return;
+    }
+    phase="result"; render();
   };
   const n=document.getElementById("next"); if(n) n.onclick=()=>{
     buildQueue(); const rest=queue.filter(c=>c.id!==cur.id);
@@ -9097,6 +9150,15 @@ function bind(){
     conf=null; checked.clear(); render();
   };
   const m10=document.getElementById("more10"); if(m10) m10.onclick=()=>{phase="ask";render();window.scrollTo(0,0)};
+  const er=document.getElementById("examReview"); if(er) er.onclick=()=>{
+    const failedIds=new Set(exam.log.filter(s=>s.actual<0.5).map(s=>s.id));
+    exam=null;
+    queue=CARDS.filter(c=>failedIds.has(c.id));
+    cur=queue[0]||null; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
+  };
+  const ed2=document.getElementById("examDone2"); if(ed2) ed2.onclick=()=>{
+    exam=null; buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
+  };
   const ts2=document.getElementById("toStats"); if(ts2) ts2.onclick=()=>{tab="stats";phase="ask";render();window.scrollTo(0,0)};
   const a=document.getElementById("again"); if(a) a.onclick=()=>{phase="ask";conf=null;checked.clear();render()};
   const db=document.getElementById("deepbtn"); if(db) db.onclick=()=>{
@@ -9154,10 +9216,20 @@ document.addEventListener("keydown",e=>{
     if(phase==="reveal") document.getElementById("done")?.click();
     else if(phase==="result") document.getElementById("next")?.click();
     else if(phase==="session") document.getElementById("more10")?.click();
+    else if(phase==="examdone") document.getElementById("examDone2")?.click();
   }
 });
 const qInput=document.getElementById("qSearch");
-qInput.oninput=()=>{qterm=qInput.value.trim();buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
+qInput.oninput=()=>{qterm=qInput.value.trim();exam=null;buildQueue();cur=null;phase="ask";conf=null;checked.clear();render()};
+const examBtn=document.getElementById("examBtn");
+examBtn.onclick=()=>{
+  if(exam){ exam=null; buildQueue(); cur=null; phase="ask"; conf=null; checked.clear(); render(); return; }
+  const p=pool();
+  if(p.length<3) return;
+  exam={total:Math.min(20,p.length),log:[]};
+  queue=shuffle(p);
+  cur=queue[0]; phase="ask"; conf=null; checked.clear(); render(); window.scrollTo(0,0);
+};
 document.getElementById("themeBtn").onclick=()=>{
   const now=document.documentElement.dataset.theme==="dark"?"light":"dark";
   try{localStorage.setItem(TKEY,now)}catch(e){}
