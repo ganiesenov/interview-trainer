@@ -210,6 +210,34 @@ body{
 .deepbox .lesson p{font-size:14.5px}
 .deepbox .lesson ul{padding-left:18px}
 .deepbox .lesson li{font-size:14px;line-height:1.55;margin-bottom:6px}
+/* ---------- широкий экран: убираем пустые поля ---------- */
+@media(min-width:900px){
+  .wrap{max-width:1100px}
+  .selrow,.searchrow{max-width:780px;margin-left:auto;margin-right:auto;width:100%}
+  #view>.card{max-width:780px;margin-left:auto;margin-right:auto;width:100%;box-sizing:border-box}
+  /* вердикт: пункты и эталон слева, замер самооценки справа */
+  #view>.card.result{max-width:1100px;display:grid;grid-template-columns:1.15fr .85fr;column-gap:36px;align-content:start;
+    grid-template-areas:"eye eye" "q q" "points side" "ref side" "deepb deepb" "deepbox deepbox" "next again"}
+  .card.result>.eyebrow{grid-area:eye}
+  .card.result>.q{grid-area:q}
+  .card.result>.points{grid-area:points;align-self:start}
+  .card.result>.refbox{grid-area:ref;align-self:start}
+  .card.result>.gap{grid-area:side;align-self:start;position:sticky;top:14px}
+  .card.result>#deepbtn{grid-area:deepb}
+  .card.result>.deepbox{grid-area:deepbox}
+  .card.result>#next{grid-area:next}
+  .card.result>#again{grid-area:again;margin-top:16px}
+  /* полный разбор — в две колонки, как разворот */
+  .deepbox .lesson{columns:2 360px;column-gap:44px}
+  .deepbox .lesson ul,.deepbox .lesson blockquote,.deepbox .lesson h2{break-inside:avoid}
+  .deepbox .lesson p{break-inside:avoid-column}
+  /* список уроков — сеткой */
+  #view>.card.theorycard{max-width:1100px}
+  .lessonlist{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch}
+}
+@media(min-width:1240px){
+  .lessonlist{grid-template-columns:1fr 1fr 1fr}
+}
 </style>
 </head>
 <body>
@@ -8269,7 +8297,7 @@ function deck(){
   if(!cur) return `<div class="card"><p class="empty">Карточки кончились. Открой разбор — там видно, где самооценка расходится с делом.</p></div>`;
   const h0=hist[cur.id];
   const badge=h0?`повтор · ступень ${Math.min(boxOf(h0),4)+1}/5`:"новая";
-  const head=`<div class="card">
+  const head=`<div class="card${phase==="result"?" result":""}">
     <div class="eyebrow">${esc(cur.topic)}<span class="dot"></span>${cur.points.length} пунктов<span class="dot"></span>${badge}</div>
     <h1 class="q">${esc(cur.q)}</h1>`;
 
@@ -8395,7 +8423,7 @@ function theory(){
       <span class="lm">${esc(l.track)} · ${l.minutes||"?"} мин · ${cards.length} карточек · осталось ${left(cards)}</span>
     </button>`;
   }).join("");
-  return `<div class="card">
+  return `<div class="card theorycard">
     <div class="eyebrow">Теория</div>
     <h1 class="q" style="font-size:23px">Сначала урок, потом тест</h1>
     <p class="hint">Читаешь урок целиком, потом проходишь карточки по нему — они спрашивают ровно то, что было в тексте, и ничего сверх.</p>
