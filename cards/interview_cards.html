@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#EDF0F4">
+<meta name="theme-color" content="#F4F2EC">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
@@ -12,39 +12,39 @@
 <title>Карточки — LLM / NLP интервью</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#EDF0F4;
+  --bg:#F4F2EC;
   --surface:#FFFFFF;
-  --ink:#10182B;
-  --muted:#5A6577;
-  --line:#D5DCE5;
-  --accent:#2B4ACB;
-  --warn:#C97A16;
+  --ink:#1C1B17;
+  --muted:#6E6A5F;
+  --line:#E5E1D5;
+  --accent:#4338CA;
+  --warn:#B4690E;
   --miss:#B23A48;
   --ok:#1E7A5E;
-  --tint-warn:#FDF6EC; --deep-warn:#7A4A0B;
-  --tint-ok:#F1F8F5;   --deep-ok:#15563F;
-  --tint-info:#F0F3FD; --deep-info:#1E357F;
-  --shadow1:rgba(16,24,43,.04); --shadow2:rgba(16,24,43,.4);
-  --r:14px;
+  --tint-warn:#FAF3E4; --deep-warn:#7A4A0B;
+  --tint-ok:#EDF6F1;   --deep-ok:#15563F;
+  --tint-info:#EEF0FC; --deep-info:#2A2F86;
+  --shadow1:rgba(28,27,23,.05); --shadow2:rgba(28,27,23,.35);
+  --r:20px;
   color-scheme:light;
 }
 :root[data-theme="dark"]{
-  --bg:#0E131C;
-  --surface:#161D2A;
-  --ink:#E7EDF6;
-  --muted:#8C97AA;
-  --line:#28334A;
-  --accent:#8AA2FF;
+  --bg:#131316;
+  --surface:#1D1D23;
+  --ink:#ECEAE4;
+  --muted:#9A968B;
+  --line:#2D2D35;
+  --accent:#A0ACFF;
   --warn:#DFA65C;
-  --miss:#E27E8B;
+  --miss:#E28787;
   --ok:#5CC29E;
   --tint-warn:#2A2113; --deep-warn:#E8C289;
-  --tint-ok:#132420;   --deep-ok:#93DCC0;
-  --tint-info:#1A2340; --deep-info:#B3C3FF;
-  --shadow1:rgba(0,0,0,.25); --shadow2:rgba(0,0,0,.55);
+  --tint-ok:#16241F;   --deep-ok:#93DCC0;
+  --tint-info:#1F2240; --deep-info:#BCC7FF;
+  --shadow1:rgba(0,0,0,.3); --shadow2:rgba(0,0,0,.6);
   color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -248,7 +248,7 @@ body{
 /* ---------- широкий экран: убираем пустые поля ---------- */
 @media(min-width:900px){
   .wrap{max-width:1100px}
-  .selrow,.searchrow{max-width:780px;margin-left:auto;margin-right:auto;width:100%}
+  .selrow,.searchrow,.examrow{max-width:780px;margin-left:auto;margin-right:auto;width:100%}
   #view>.card{max-width:780px;margin-left:auto;margin-right:auto;width:100%;box-sizing:border-box}
   /* вердикт: пункты и эталон слева, замер самооценки справа */
   #view>.card.result{max-width:1100px;display:grid;grid-template-columns:1.15fr .85fr;column-gap:36px;align-content:start;
@@ -287,7 +287,7 @@ body{
 .toc>b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .toc ol{margin:8px 0 0;padding-left:20px}
 .toc li{margin:3px 0;font-size:14px}
-.toc button{background:none;border:none;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;text-align:left}
+.toc button{background:none;border:none;padding:0;font:inherit;font-size:14px;color:var(--accent);cursor:pointer;text-align:left;display:inline;vertical-align:top}
 .toc button:hover{text-decoration:underline}
 .fab{position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:18px;line-height:1;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
 .fab.show{opacity:1;pointer-events:auto}
@@ -315,6 +315,80 @@ html[data-fs="xl"] .refbox{font-size:17px}
 .seg button[data-on="1"]{border-color:var(--accent);color:var(--accent);font-weight:600}
 .setpop select{width:100%;box-sizing:border-box;font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink)}
 .spnote{font-size:12px;color:var(--muted);margin:12px 0 0;line-height:1.5}
+
+/* ================= redesign: paper & ink ================= */
+body{
+  font-family:"Golos Text",system-ui,-apple-system,sans-serif;
+  background:radial-gradient(1100px 540px at 50% -140px, color-mix(in srgb, var(--accent) 7%, var(--bg)), var(--bg)) fixed;
+}
+.top{
+  position:sticky;top:0;z-index:60;
+  margin:0 -16px 12px;padding:12px 16px;
+  background:color-mix(in srgb, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+}
+.brand{font-family:"Golos Text",sans-serif;font-weight:700;font-size:13.5px;letter-spacing:.01em;text-transform:none;color:var(--ink)}
+.brand::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:8px}
+.counter{white-space:nowrap}
+.tabbtn{
+  font-family:"Golos Text",sans-serif;font-size:12.5px;font-weight:600;letter-spacing:.01em;text-transform:none;white-space:nowrap;
+  background:var(--surface);color:var(--muted);padding:7px 12px;box-shadow:0 1px 2px var(--shadow1);
+}
+#goalPill{font-family:"IBM Plex Mono",monospace}
+.rail{height:3px;border-radius:3px;background:color-mix(in srgb,var(--line) 55%,var(--bg))}
+.rail i{background:linear-gradient(90deg,var(--accent),var(--ok))}
+#trackSel,#topicSel{font-family:"Golos Text",sans-serif;font-size:13px;font-weight:500;letter-spacing:0;border-radius:12px;padding:11px 28px 11px 13px;box-shadow:0 1px 2px var(--shadow1)}
+.searchrow input,.lsearchrow input{border-radius:12px;box-shadow:0 1px 2px var(--shadow1)}
+.examrow button{border:1px solid transparent;background:var(--tint-info);color:var(--deep-info);border-radius:12px;padding:11px;font-weight:600}
+.examrow button:hover{border-color:var(--accent);border-style:solid}
+.card{
+  border-color:color-mix(in srgb,var(--line) 70%,transparent);padding:24px 22px;
+  box-shadow:0 1px 2px var(--shadow1),0 18px 44px -26px var(--shadow2);
+}
+.eyebrow{gap:8px}
+.eyebrow::before{content:"";flex:0 0 16px;height:2px;background:var(--accent);border-radius:2px}
+.q{font-family:"Playfair Display","IBM Plex Serif",Georgia,serif;font-weight:700;font-size:25px;line-height:1.28;letter-spacing:0}
+html[data-fs="lg"] .q{font-size:27px}
+html[data-fs="xl"] .q{font-size:29px}
+.cbtn{border-radius:14px;padding:14px 16px;justify-content:flex-start;box-shadow:0 1px 2px var(--shadow1);transition:border-color .15s,box-shadow .15s,transform .12s,background .15s}
+.cbtn:hover{transform:translateY(-1px);box-shadow:0 8px 18px -10px var(--shadow2)}
+.cbtn::before{content:"";width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.conf .cbtn:nth-of-type(1)::before{background:var(--ok)}
+.conf .cbtn:nth-of-type(2)::before{background:var(--warn)}
+.conf .cbtn:nth-of-type(3)::before{background:var(--miss)}
+.cbtn span.k{margin-left:auto;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:10.5px}
+.pt{border-radius:13px;padding:13px 14px}
+.pt .box{border-radius:6px}
+.pt[data-on="1"]{background:color-mix(in srgb,var(--ok) 10%,var(--surface));border-color:color-mix(in srgb,var(--ok) 55%,var(--line))}
+.primary{
+  border-radius:14px;padding:16px;font-weight:700;letter-spacing:.01em;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 88%,#fff),var(--accent));
+  box-shadow:0 10px 26px -12px color-mix(in srgb,var(--accent) 60%,transparent);
+}
+:root[data-theme="dark"] .primary{color:#131316}
+.ghost{border-radius:12px}
+.lessonbar{border-radius:12px;background:var(--tint-info);border-color:transparent;color:var(--deep-info);font-family:"Golos Text",sans-serif;font-size:12.5px;font-weight:600;letter-spacing:.01em;text-transform:none}
+.lrow{border-radius:14px;box-shadow:0 1px 2px var(--shadow1);transition:transform .12s,box-shadow .15s,border-color .15s}
+.lrow:hover{transform:translateY(-1px);box-shadow:0 10px 22px -14px var(--shadow2)}
+.lbnum{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .lbnum{color:#131316}
+.lbbar i{background:linear-gradient(90deg,var(--accent),var(--ok))}
+.lesson{font-size:16px;line-height:1.7}
+.lesson h2{font-family:"Playfair Display",serif;font-size:20px;font-weight:700;margin:26px 0 10px}
+.lesson blockquote{background:color-mix(in srgb,var(--accent) 6%,var(--surface));border-radius:0 12px 12px 0;color:inherit}
+.tldr{border-radius:14px;background:color-mix(in srgb,var(--accent) 5%,var(--surface));border-color:color-mix(in srgb,var(--accent) 22%,var(--line))}
+.big{font-family:"Playfair Display",serif;font-size:48px;font-weight:700}
+.gap,.deepbox,.fig,.media,.codeblock,.sources,.examfail,.toc{border-radius:14px}
+.refbox{border-left-width:3px}
+.backbtn{background:var(--surface);box-shadow:0 1px 2px var(--shadow1)}
+.resume{border-radius:14px;box-shadow:0 1px 2px var(--shadow1)}
+.setpop{border-radius:16px}
+@media(max-width:520px){
+  .top{margin:0 -16px 10px}
+  .topctl{gap:6px!important}
+  .tabbtn{padding:6px 9px;font-size:11.5px}
+  .counter{font-size:10px}
+}
 </style>
 </head>
 <body>
@@ -9872,7 +9946,7 @@ function applyTheme(){
   const dark=saved?saved==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
   document.documentElement.dataset.theme=dark?"dark":"light";
   const meta=document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content=dark?"#0E131C":"#EDF0F4";
+  if(meta) meta.content=dark?"#131316":"#F4F2EC";
 }
 applyTheme();
 let mem=null;
