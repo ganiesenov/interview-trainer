@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EDF0F4">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>Карточки — LLM / NLP интервью</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10260,8 +10264,21 @@ function stats(){
       <span class="bar"><i style="width:${pct}%;background:${col}"></i></span>
       <span class="p">${pct}%</span></div>`;
   }).join("");
+  const byTrackAll={};
+  CARDS.forEach(c=>{const s=(byTrackAll[c.track]??={t:0,d:0}); s.t++; if(hist[c.id]&&hist[c.id].actual>=.8) s.d++;});
+  const totalDone=Object.values(byTrackAll).reduce((a,v)=>a+v.d,0);
+  const trackRows=Object.entries(byTrackAll).sort((a,b)=>b[1].d/b[1].t-a[1].d/a[1].t).map(([t,v])=>{
+    const pct=Math.round(v.d/v.t*100);
+    return `<div class="srow"><span class="t">${esc(t)}</span>
+      <span class="bar"><i style="width:${pct}%;background:${pct===100?'var(--ok)':'var(--accent)'}"></i></span>
+      <span class="p" style="width:70px;white-space:nowrap">${v.d}/${v.t}</span></div>`;
+  }).join("");
   return `<div class="card">
-    <div class="eyebrow">Разрыв самооценки</div>
+    <div class="eyebrow">Прогресс</div>
+    <div class="big" style="color:var(--accent)">${Math.round(totalDone/CARDS.length*100)}%</div>
+    <div class="biglab">закрыто ${totalDone} из ${CARDS.length} карточек (названо ≥80% пунктов)</div>
+    <div style="margin-top:18px">${trackRows}</div>
+    <div class="eyebrow" style="margin-top:30px">Разрыв самооценки</div>
     <div class="big" style="color:${avg>.22?'var(--miss)':avg>.08?'var(--warn)':'var(--ok)'}">${avg>0?"+":""}${Math.round(avg*100)}%</div>
     <div class="biglab">насколько в среднем переоцениваешь себя</div>
     <div style="margin-top:22px">${rows}</div>
