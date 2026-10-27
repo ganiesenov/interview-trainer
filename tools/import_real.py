@@ -4,10 +4,12 @@
     python tools/import_real.py --normalize          # data/real/extracted.jsonl -> normalized.jsonl
     python tools/import_real.py --match              # топ-5 кандидатов из банка (bge-m3)
     python tools/import_real.py --resolve            # вердикты судьи + overrides -> resolved.jsonl
+    python tools/import_real.py --apply              # поле asked на exact-карточках банка
 
 Двухэтапный матчинг: эмбеддинги дают кандидатов, решает судья (субагенты
 по tools/judge_prompt.md, вердикты в data/real/judged.jsonl). Ручные правки —
-data/real/overrides.json: {"rid": "card_id" | null}, применяются поверх судьи.
+data/real/overrides.json применяются поверх судьи: {"rid": "card_id"} — exact,
+{"rid": null} — none, {"rid": {"match": "partial"}} — partial (карточка судьи).
 
 Источник — выгрузка Threads (data/real/source.jsonl), посты о собесах уже
 разбиты на атомарные вопросы в data/real/extracted.jsonl. Всё в data/real/
@@ -23,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_bank import embed, load_bank  # noqa: E402
+from gen_bank import embed, load_bank, save_bank  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL = ROOT / "data" / "real"
@@ -174,8 +176,7 @@ def resolve() -> None:
             continue
         card, kind = verdict["card_id"], verdict["match"]
         if r["rid"] in overrides:
-            card = overrides[r["rid"]]
-            kind = "exact" if card else "none"
+            card, kind = parse_override(overrides[r["rid"]], card)
         if card and card not in known:
             sys.exit(f"{r['rid']}: карточки {card} нет в банке")
         rows.append({**r, "card_id": card, "match": kind, "why": verdict.get("why", ""),
@@ -192,21 +193,55 @@ def resolve() -> None:
     print(f"overrides применено: {sum(r['override'] for r in rows)}")
 
 
+def parse_override(value, judge_card: str | None) -> tuple[str | None, str]:
+    """null -> none; "card_id" -> exact; {"match": ..., "card_id"?: ...} -> as given."""
+    if value is None:
+        return None, "none"
+    if isinstance(value, str):
+        return value, "exact"
+    kind = value["match"]
+    card = value.get("card_id", judge_card) if kind != "none" else None
+    return card, kind
+
+
+def apply_asked() -> None:
+    """Put "asked": [{"company", "url"}] on bank cards that a real question matched exactly.
+
+    Case write-ups are articles, not interviews, so they never count as "asked".
+    Rerunnable: stale "asked" fields are dropped first.
+    """
+    asked: dict[str, dict[str, str]] = {}
+    for r in read_jsonl(RESOLVED):
+        if r["match"] == "exact" and r["kind"] != "case":
+            asked.setdefault(r["card_id"], {}).setdefault(r["company"], r["urls"][0])
+    bank = load_bank()
+    for card in bank:
+        card.pop("asked", None)
+        if card["id"] in asked:
+            card["asked"] = [{"company": c, "url": u} for c, u in sorted(asked[card["id"]].items())]
+    save_bank(bank)
+    named = sum(any(a["company"] != UNNAMED for a in c.get("asked", [])) for c in bank)
+    print(f"asked проставлен на {len(asked)} карточек, из них с названной компанией {named}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--normalize", action="store_true")
     ap.add_argument("--match", action="store_true")
     ap.add_argument("--floor", type=float, default=FLOOR, help="нижняя отсечка косинуса")
     ap.add_argument("--resolve", action="store_true")
+    ap.add_argument("--apply", action="store_true")
     a = ap.parse_args()
-    if not (a.normalize or a.match or a.resolve):
-        ap.error("нужен --normalize, --match или --resolve")
+    if not (a.normalize or a.match or a.resolve or a.apply):
+        ap.error("нужен --normalize, --match, --resolve или --apply")
     if a.normalize:
         normalize()
     if a.match:
         match(a.floor)
     if a.resolve:
         resolve()
+    if a.apply:
+        apply_asked()
 
 
 if __name__ == "__main__":
