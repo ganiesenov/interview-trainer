@@ -5,6 +5,7 @@
     python tools/import_real.py --match              # топ-5 кандидатов из банка (bge-m3)
     python tools/import_real.py --resolve            # вердикты судьи + overrides -> resolved.jsonl
     python tools/import_real.py --apply              # поле asked на exact-карточках банка
+    python tools/import_real.py --build-real         # deck/verified/asked в banks/real.json
 
 Двухэтапный матчинг: эмбеддинги дают кандидатов, решает судья (субагенты
 по tools/judge_prompt.md, вердикты в data/real/judged.jsonl). Ручные правки —
@@ -35,6 +36,8 @@ CANDIDATES = REAL / "candidates.jsonl"
 JUDGED = REAL / "judged.jsonl"
 OVERRIDES = REAL / "overrides.json"
 RESOLVED = REAL / "resolved.jsonl"
+REAL_MAP = REAL / "real_map.json"
+REAL_DECK = ROOT / "banks" / "real.json"
 TOP_K = 5
 FLOOR = 0.60
 UNMATCHED_TRACKS = {"Кодинг-секция"}  # algorithms: the bank barely covers them
@@ -224,6 +227,43 @@ def apply_asked() -> None:
     print(f"asked проставлен на {len(asked)} карточек, из них с названной компанией {named}")
 
 
+def build_real() -> None:
+    """Fill deck/verified/asked on banks/real.json from data/real/real_map.json.
+
+    Card text is hand-written in banks/real.json; which real questions a card
+    answers lives in the git-ignored map, so only company and post link reach the repo.
+    """
+    cards = json.loads(REAL_DECK.read_text(encoding="utf-8"))
+    mapping = json.loads(REAL_MAP.read_text(encoding="utf-8"))
+    by_rid = {r["rid"]: r for r in read_jsonl(RESOLVED)}
+    bank_ids = {c["id"] for c in load_bank()}
+
+    errors = []
+    for card in cards:
+        cid = card["id"]
+        if cid in bank_ids:
+            errors.append(f"{cid}: id занят в банке")
+        if card.get("see") and card["see"] not in bank_ids:
+            errors.append(f"{cid}: see -> {card['see']} нет в банке")
+        rids = mapping.get(cid)
+        if not rids:
+            errors.append(f"{cid}: нет в {REAL_MAP.name}")
+            continue
+        asked: dict[str, str] = {}
+        for rid in rids:
+            r = by_rid[rid]
+            if r["match"] == "exact":
+                errors.append(f"{cid}: {rid} уже закрыт карточкой {r['card_id']}")
+            asked.setdefault(r["company"], r["urls"][0])
+        card["deck"] = "real"
+        card["verified"] = card.get("verified", False)
+        card["asked"] = [{"company": c, "url": u} for c, u in sorted(asked.items())]
+    if errors:
+        sys.exit("\n".join(errors))
+    REAL_DECK.write_text(json.dumps(cards, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(cards)} карточек в {REAL_DECK.relative_to(ROOT)}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--normalize", action="store_true")
@@ -231,9 +271,10 @@ def main() -> None:
     ap.add_argument("--floor", type=float, default=FLOOR, help="нижняя отсечка косинуса")
     ap.add_argument("--resolve", action="store_true")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--build-real", action="store_true")
     a = ap.parse_args()
-    if not (a.normalize or a.match or a.resolve or a.apply):
-        ap.error("нужен --normalize, --match, --resolve или --apply")
+    if not (a.normalize or a.match or a.resolve or a.apply or a.build_real):
+        ap.error("нужен --normalize, --match, --resolve, --apply или --build-real")
     if a.normalize:
         normalize()
     if a.match:
@@ -242,6 +283,8 @@ def main() -> None:
         resolve()
     if a.apply:
         apply_asked()
+    if a.build_real:
+        build_real()
 
 
 if __name__ == "__main__":
