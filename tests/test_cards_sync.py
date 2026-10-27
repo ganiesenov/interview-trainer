@@ -12,6 +12,7 @@ import pytest
 
 BANK = Path("banks/bank_full.json")
 LESSONS = Path("banks/lessons.json")
+REAL = BANK.parent / "real.json"
 CARDS = Path("cards/interview_cards.html")
 
 
@@ -71,6 +72,7 @@ def test_deep_breakdowns_match_answers_and_bank():
     assert inlined_deep == source_deep, "DEEP drifted from docs/answers — run tools/build_cards.py"
 
     known = {card["id"] for card in json.loads(BANK.read_text(encoding="utf-8"))}
+    known |= {card["id"] for card in json.loads(REAL.read_text(encoding="utf-8"))}
     unknown = sorted(set(source_deep) - known)
     assert not unknown, f"breakdowns for unknown cards: {unknown}"
     # every breakdown keeps the four-block format

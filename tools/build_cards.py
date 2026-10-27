@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BANK = ROOT / "banks" / "bank_full.json"
+REAL = ROOT / "banks" / "real.json"
 LESSONS = ROOT / "banks" / "lessons.json"
 FIGURES = ROOT / "banks" / "figures.json"
 CODE_TASKS = ROOT / "banks" / "code_tasks.json"
@@ -63,6 +64,7 @@ def main() -> None:
     lessons = load(LESSONS)
     deep = load_deep()
 
+    real = load(REAL) if REAL.exists() else []
     known = {card["id"] for card in bank}
     dangling = {
         lesson["id"]: [i for i in lesson["cards"] if i not in known]
@@ -72,7 +74,7 @@ def main() -> None:
     if dangling:
         sys.exit(f"уроки ссылаются на несуществующие карточки: {dangling}")
 
-    unknown_deep = sorted(set(deep) - known)
+    unknown_deep = sorted(set(deep) - known - {card["id"] for card in real})
     if unknown_deep:
         sys.exit(f"в docs/answers есть разборы несуществующих карточек: {unknown_deep}")
 
