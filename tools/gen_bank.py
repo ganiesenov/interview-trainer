@@ -63,8 +63,16 @@ def save_bank(cards: list[dict]) -> None:
     BANK.write_text(json.dumps(cards, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def embed_one(text: str) -> list[float]:
+    try:
+        return ollama.embeddings(model=EMB_MODEL, prompt=text)["embedding"]
+    except ollama.ResponseError:
+        # bge-m3 on GPU overflows fp16 to NaN on some inputs; CPU gives the same vector.
+        return ollama.embeddings(model=EMB_MODEL, prompt=text, options={"num_gpu": 0})["embedding"]
+
+
 def embed(texts: list[str]) -> np.ndarray:
-    vecs = [ollama.embeddings(model=EMB_MODEL, prompt=t)["embedding"] for t in texts]
+    vecs = [embed_one(t) for t in texts]
     m = np.array(vecs, dtype=np.float32)
     return m / (np.linalg.norm(m, axis=1, keepdims=True) + 1e-9)
 
