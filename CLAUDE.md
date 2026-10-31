@@ -39,7 +39,8 @@
 - `banks/lessons.json` — уроки теории (`id/title/track/cards/body`). Урок ссылается на
   карточки, которые он закрывает: в интерфейсе это «прочитал → тест ровно по этому».
   `body` — лёгкий markdown, рендерится собственным мини-парсером в странице карточек.
-- `tools/build_cards.py` — вшивает `CARDS` и `LESSONS` в `cards/interview_cards.html`.
+- `tools/build_cards.py` — вшивает `CARDS`, `REAL` (колода реальных собесов,
+  `banks/real.json`) и `LESSONS` в `cards/interview_cards.html`.
   Запускать после любой правки банка или уроков; падает на ссылках в никуда.
 
 ## Правила

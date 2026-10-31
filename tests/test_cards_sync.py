@@ -18,7 +18,7 @@ CARDS = Path("cards/interview_cards.html")
 
 def inlined(name: str) -> list[dict]:
     html = CARDS.read_text(encoding="utf-8")
-    match = re.search(rf"const {name} = (\[.*?\]);", html, re.DOTALL)
+    match = re.search(rf"const {name} = (\[(?:.*?\n)?\]);", html, re.DOTALL)
     if not match:
         pytest.fail(f"const {name} block not found in cards/interview_cards.html")
     return json.loads(match.group(1))
@@ -29,6 +29,31 @@ def test_cards_html_matches_the_bank():
     cards = inlined("CARDS")
     assert [card["id"] for card in cards] == [card["id"] for card in bank]
     assert [card["q"] for card in cards] == [card["q"] for card in bank]
+
+
+def test_cards_html_matches_the_real_deck():
+    assert inlined("REAL") == json.loads(REAL.read_text(encoding="utf-8"))
+
+
+def test_real_deck_is_well_formed():
+    """Real-interview cards carry companies, the unverified flag and a valid `see`."""
+    real = json.loads(REAL.read_text(encoding="utf-8"))
+    known = {card["id"] for card in json.loads(BANK.read_text(encoding="utf-8"))}
+
+    ids = [card["id"] for card in real]
+    assert len(ids) == len(set(ids)), "duplicate ids in the real deck"
+    for card in real:
+        cid = card["id"]
+        assert cid not in known, f"{cid}: id clashes with the bank"
+        for field in ("track", "topic", "q", "points", "ref"):
+            assert card.get(field), f"{cid}: missing {field}"
+        assert card["deck"] == "real" and isinstance(card["verified"], bool), cid
+        assert card["asked"], f"{cid}: no companies"
+        assert all(a["company"] and a["url"].startswith("https://") for a in card["asked"]), cid
+        companies = [a["company"] for a in card["asked"]]
+        assert len(companies) == len(set(companies)), f"{cid}: repeated company"
+        if card.get("see"):
+            assert card["see"] in known, f"{cid}: see -> unknown card {card['see']}"
 
 
 def test_cards_html_matches_the_lessons():

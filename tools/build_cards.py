@@ -5,7 +5,7 @@
 
 Страница карточек самодостаточна: вопросы, теория и разборы лежат прямо в HTML,
 чтобы она открывалась с телефона без сервера. Источники правды —
-banks/bank_full.json, banks/lessons.json и docs/answers/*.md; после их изменения
+banks/bank_full.json, banks/real.json, banks/lessons.json и docs/answers/*.md; после их изменения
 запускай этот скрипт, иначе страница разъедется с источниками (это ловит
 tests/test_cards_sync.py).
 """
@@ -44,7 +44,8 @@ def load_deep() -> dict[str, str]:
 
 def replace_block(html: str, name: str, value, indent: int) -> str:
     block = f"const {name} = " + json.dumps(value, ensure_ascii=False, indent=indent) + ";"
-    html, n = re.subn(rf"const {name} = \[.*?\];", lambda _: block, html, flags=re.S)
+    # anchor on "\n];": card text may contain "];", a JSON string never holds a raw newline
+    html, n = re.subn(rf"const {name} = \[(?:.*?\n)?\];", lambda _: block, html, flags=re.S)
     if n != 1:
         sys.exit(f"в HTML не найден ровно один блок const {name} (найдено {n})")
     return html
@@ -74,6 +75,19 @@ def main() -> None:
     if dangling:
         sys.exit(f"уроки ссылаются на несуществующие карточки: {dangling}")
 
+    real_errors = []
+    for card in real:
+        if card["id"] in known:
+            real_errors.append(f"{card['id']}: id занят в банке")
+        if card.get("see") and card["see"] not in known:
+            real_errors.append(f"{card['id']}: see -> {card['see']} нет в банке")
+        if not card.get("asked"):
+            real_errors.append(f"{card['id']}: нет asked")
+    if len({card["id"] for card in real}) != len(real):
+        real_errors.append("дубли id в banks/real.json")
+    if real_errors:
+        sys.exit("ошибки в banks/real.json:\n" + "\n".join(real_errors))
+
     unknown_deep = sorted(set(deep) - known - {card["id"] for card in real})
     if unknown_deep:
         sys.exit(f"в docs/answers есть разборы несуществующих карточек: {unknown_deep}")
@@ -99,6 +113,7 @@ def main() -> None:
 
     html = CARDS.read_text(encoding="utf-8")
     html = replace_block(html, "CARDS", bank, 0)
+    html = replace_block(html, "REAL", real, 0)
     html = replace_block(html, "LESSONS", lessons, 1)
     html = replace_block(html, "CODETASKS", tasks, 1)
     html = replace_line_block(html, "DEEP", deep)
@@ -111,7 +126,7 @@ def main() -> None:
 
     covered = {i for lesson in lessons for i in lesson["cards"]}
     print(
-        f"вшито: {len(bank)} карточек, {len(lessons)} урок(ов), {len(deep)} разбор(ов), "
+        f"вшито: {len(bank)} карточек, {len(real)} с реальных собесов, {len(lessons)} урок(ов), {len(deep)} разбор(ов), "
         f"{len(tasks)} код-задач(и); теорией покрыто {len(covered)} карточек из {len(bank)}"
     )
 
