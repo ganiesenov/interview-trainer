@@ -67,8 +67,10 @@ def main() -> None:
 
     real = load(REAL) if REAL.exists() else []
     known = {card["id"] for card in bank}
+    # a lesson may test bank cards and real-interview cards alike
+    testable = known | {card["id"] for card in real}
     dangling = {
-        lesson["id"]: [i for i in lesson["cards"] if i not in known]
+        lesson["id"]: [i for i in lesson["cards"] if i not in testable]
         for lesson in lessons
     }
     dangling = {k: v for k, v in dangling.items() if v}
@@ -124,7 +126,7 @@ def main() -> None:
     if missing_meta:
         sys.exit(f"у уроков нет tldr/sources/minutes: {missing_meta}")
 
-    covered = {i for lesson in lessons for i in lesson["cards"]}
+    covered = {i for lesson in lessons for i in lesson["cards"]} & known
     print(
         f"вшито: {len(bank)} карточек, {len(real)} с реальных собесов, {len(lessons)} урок(ов), {len(deep)} разбор(ов), "
         f"{len(tasks)} код-задач(и); теорией покрыто {len(covered)} карточек из {len(bank)}"

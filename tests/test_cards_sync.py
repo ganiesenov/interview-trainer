@@ -63,6 +63,7 @@ def test_cards_html_matches_the_lessons():
 def test_lessons_are_well_formed_and_point_at_real_cards():
     lessons = json.loads(LESSONS.read_text(encoding="utf-8"))
     known = {card["id"] for card in json.loads(BANK.read_text(encoding="utf-8"))}
+    known |= {card["id"] for card in json.loads(REAL.read_text(encoding="utf-8"))}
 
     seen_ids = set()
     for lesson in lessons:
